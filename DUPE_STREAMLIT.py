@@ -4,7 +4,7 @@ import io
 from difflib import SequenceMatcher
 import time
 
-# ---------- NORMALIZATION HELPERS ----------
+# ---------- ALL FUNCTIONS SAME AS BEFORE (unchanged) ----------
 def normalize_gmail(email: str) -> str:
     if not isinstance(email, str): return ""
     e = email.strip().lower()
@@ -27,17 +27,14 @@ def normalize_dob(dob_val) -> str:
 def name_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
-# ---------- FIXED GMAIL DUPLICATES WITH PROPER SUMMARY ----------
 def find_gmail_duplicates(df, email_col="Email", created_col="Created On"):
-    if email_col not in df.columns: 
-        return pd.DataFrame(), pd.DataFrame()
+    if email_col not in df.columns: return pd.DataFrame(), pd.DataFrame()
     
     df_work = df.copy()
     df_work["Normalized_Gmail"] = df_work[email_col].astype(str).apply(normalize_gmail)
     df_g = df_work[df_work["Normalized_Gmail"] != ""].copy()
     
-    if df_g.empty: 
-        return pd.DataFrame(), pd.DataFrame()
+    if df_g.empty: return pd.DataFrame(), pd.DataFrame()
     
     if created_col in df_g.columns:
         df_g["_CreatedOn_dt"] = pd.to_datetime(df_g[created_col], errors="coerce")
@@ -46,10 +43,8 @@ def find_gmail_duplicates(df, email_col="Email", created_col="Created On"):
     dup_keys = counts[counts >= 2].index
     dup_df = df_g[df_g["Normalized_Gmail"].isin(dup_keys)].copy()
     
-    if dup_df.empty: 
-        return pd.DataFrame(), pd.DataFrame()
+    if dup_df.empty: return pd.DataFrame(), pd.DataFrame()
     
-    # Add timing columns
     first_seen = dup_df.groupby("Normalized_Gmail")["_CreatedOn_dt"].min().rename("First_Seen_For_Normalized")
     last_seen = dup_df.groupby("Normalized_Gmail")["_CreatedOn_dt"].max().rename("Last_Seen_For_Normalized")
     
@@ -59,25 +54,17 @@ def find_gmail_duplicates(df, email_col="Email", created_col="Created On"):
     
     dup_df = dup_df.sort_values(["Normalized_Gmail", "_CreatedOn_dt", email_col])
     
-    # ✅ DETAIL = ALL COLUMNS (with timing)
     detail_df = dup_df.copy()
     for col in ["First_Seen_For_Normalized", "Last_Seen_For_Normalized", "_CreatedOn_dt"]:
         if col in detail_df.columns and detail_df[col].dtype == 'datetime64[ns]':
             detail_df[col] = detail_df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
     
-    # ✅ SUMMARY = EXACT COLUMNS FROM YOUR ORIGINAL CODE
-    summary_cols_base = [
-        "Name", "Full name", "First Name", "Last Name", "Email", 
-        "Phone Number", "Lead Stage", "Lead Source", "Created On", 
-        "Owner", "Normalized_Gmail", "First_Seen_For_Normalized", 
-        "Is_Latest_For_Normalized"
-    ]
+    summary_cols_base = ["Name", "Full name", "First Name", "Last Name", "Email", "Phone Number", "Lead Stage", "Lead Source", "Created On", "Owner", "Normalized_Gmail", "First_Seen_For_Normalized", "Is_Latest_For_Normalized"]
     summary_cols = [c for c in summary_cols_base if c in detail_df.columns]
     summary_df = detail_df[summary_cols].copy()
     
     return detail_df, summary_df
 
-# ---------- SIMPLIFIED OTHER FUNCTIONS ----------
 def find_name_dob_course_duplicates(df):
     tmp = df.copy()
     tmp["FirstName_norm"] = tmp.get("First Name", pd.Series()).astype(str).apply(normalize_name_part)
@@ -99,9 +86,7 @@ def find_name_dob_course_duplicates(df):
     
     if detail_df.empty: return pd.DataFrame(), pd.DataFrame()
     
-    base_cols = ["Name", "Full name", "First Name", "Last Name", "Email", "Phone Number", 
-                "Lead Stage", "Lead Source", "Course", "Program Type", "Interested Program", 
-                "Created On", "Owner", "DOB_norm", "Course_norm"]
+    base_cols = ["Name", "Full name", "First Name", "Last Name", "Email", "Phone Number", "Lead Stage", "Lead Source", "Course", "Program Type", "Interested Program", "Created On", "Owner", "DOB_norm", "Course_norm"]
     summary_cols = [c for c in base_cols if c in detail_df.columns]
     summary_df = detail_df[summary_cols].copy()
     
@@ -123,20 +108,61 @@ def find_dob_only_duplicates(df):
     
     if detail_df.empty: return pd.DataFrame(), pd.DataFrame()
     
-    base_cols = ["Name", "Full name", "First Name", "Last Name", "Email", "Phone Number", 
-                "Lead Stage", "Lead Source", "Course", "Program Type", "Interested Program", 
-                "Created On", "Owner", "DOB_norm"]
+    base_cols = ["Name", "Full name", "First Name", "Last Name", "Email", "Phone Number", "Lead Stage", "Lead Source", "Course", "Program Type", "Interested Program", "Created On", "Owner", "DOB_norm"]
     summary_cols = [c for c in base_cols if c in detail_df.columns]
     summary_df = detail_df[summary_cols].copy()
     
     return detail_df, summary_df
 
-# ---------- STREAMLIT APP ----------
+# ---------- ✅ NO OPENPYXL NEEDED - CSV + Excel Fallback ----------
+def excel_download(df_detail, df_summary, label, filename_prefix):
+    """Download as CSV (always works) + Excel (if openpyxl available)"""
+    
+    # Always provide CSV
+    csv_detail = df_detail.to_csv(index=False)
+    csv_summary = df_summary.to_csv(index=False)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.download_button(
+            label=f"📄 {label} Detail (CSV)",
+            data=csv_detail,
+            file_name=f"{filename_prefix}_detail.csv",
+            mime="text/csv"
+        )
+    
+    with col2:
+        st.download_button(
+            label=f"📄 {label} Summary (CSV)",
+            data=csv_summary,
+            file_name=f"{filename_prefix}_summary.csv",
+            mime="text/csv"
+        )
+    
+    # Try Excel if openpyxl available
+    try:
+        import openpyxl
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            df_detail.to_excel(writer, sheet_name='Detail', index=False)
+            df_summary.to_excel(writer, sheet_name='Summary', index=False)
+        excel_buffer.seek(0)
+        
+        st.download_button(
+            label=f"📊 {label} (Excel)",
+            data=excel_buffer.getvalue(),
+            file_name=f"{filename_prefix}_{int(time.time())}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    except ImportError:
+        st.info("💡 **Install openpyxl for Excel export**: `pip install openpyxl`")
+
 def main():
     st.set_page_config(page_title="Lead Duplicate Finder", page_icon="🔍", layout="wide")
     
     st.title("🔍 Lead Duplicate Finder")
-    st.markdown("**Upload CRM Excel/CSV → Auto-detect duplicates → Download clean results**")
+    st.markdown("**Works without openpyxl! CSV downloads always available** 📊")
     
     st.sidebar.header("📊 Detection Rules")
     st.sidebar.markdown("""
@@ -162,21 +188,21 @@ def main():
                 st.success(f"✅ Loaded **{total_rows:,} rows**")
                 progress_bar.progress(20)
             
-            # Duplicate detection
-            status_text.text("🔍 Detecting Gmail duplicates...")
+            # Detection
+            status_text.text("🔍 Gmail duplicates...")
             gmail_detail, gmail_summary = find_gmail_duplicates(df)
             progress_bar.progress(50)
             
-            status_text.text("🔍 Detecting Name+DOB+Course...")
+            status_text.text("🔍 Name+DOB+Course...")
             ndc_detail, ndc_summary = find_name_dob_course_duplicates(df)
             progress_bar.progress(75)
             
-            status_text.text("🔍 Detecting DOB-only...")
+            status_text.text("🔍 DOB-only...")
             dob_detail, dob_summary = find_dob_only_duplicates(df)
             progress_bar.progress(100)
             
             # Results
-            st.subheader("📈 Results Summary")
+            st.subheader("📈 Results")
             col1, col2, col3 = st.columns(3)
             
             gmail_count = len(gmail_detail) if not gmail_detail.empty else 0
@@ -185,86 +211,31 @@ def main():
             
             with col1: 
                 groups = gmail_detail['Normalized_Gmail'].nunique() if not gmail_detail.empty else 0
-                st.metric("Gmail Duplicates", f"{gmail_count:,}", delta=f"{groups} groups")
+                st.metric("Gmail", f"{gmail_count:,}", delta=f"{groups} groups")
             with col2: st.metric("Name+DOB+Course", f"{ndc_count:,}")
-            with col3: st.metric("DOB Only", f"{dob_count:,}")
+            with col3: st.metric("DOB", f"{dob_count:,}")
             
             total_duplicates = gmail_count + ndc_count + dob_count
             
             if total_duplicates == 0:
-                st.success("🎉 **No duplicates found! Data is clean** ✅")
+                st.success("🎉 **No duplicates found!** ✅")
             else:
-                st.success(f"🎉 Found **{total_duplicates:,} duplicate rows**")
+                st.success(f"🎉 **{total_duplicates:,} duplicates found!**")
             
-            # DOWNLOADS with PROPER SUMMARY
-            st.subheader("📥 Download Results")
+            # DOWNLOADS - NO OPENPYXL REQUIRED
+            st.subheader("📥 Downloads (CSV Always Works)")
             
             if not gmail_detail.empty:
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                    gmail_detail.to_excel(writer, sheet_name='Gmail_Detail', index=False)
-                    gmail_summary.to_excel(writer, sheet_name='Gmail_Summary', index=False)  # ✅ CORRECT SUMMARY
-                excel_buffer.seek(0)
-                
-                st.download_button(
-                    label="📧 Gmail Duplicates (Detail + Summary)",
-                    data=excel_buffer.getvalue(),
-                    file_name=f"gmail_duplicates_{int(time.time())}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                excel_download(gmail_detail, gmail_summary, "Gmail Duplicates", "gmail_duplicates")
             
             if not ndc_detail.empty:
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                    ndc_detail.to_excel(writer, sheet_name='NDC_Detail', index=False)
-                    ndc_summary.to_excel(writer, sheet_name='NDC_Summary', index=False)
-                excel_buffer.seek(0)
-                
-                st.download_button(
-                    label="👤 Name+DOB+Course Duplicates",
-                    data=excel_buffer.getvalue(),
-                    file_name=f"ndc_duplicates_{int(time.time())}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                excel_download(ndc_detail, ndc_summary, "Name+DOB+Course", "ndc_duplicates")
             
             if not dob_detail.empty:
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                    dob_detail.to_excel(writer, sheet_name='DOB_Detail', index=False)
-                    dob_summary.to_excel(writer, sheet_name='DOB_Summary', index=False)
-                excel_buffer.seek(0)
-                
-                st.download_button(
-                    label="🎂 DOB Duplicates",
-                    data=excel_buffer.getvalue(),
-                    file_name=f"dob_duplicates_{int(time.time())}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            
-            # Combined
-            if total_duplicates > 0:
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                    if not gmail_detail.empty:
-                        gmail_detail.to_excel(writer, sheet_name='Gmail_Detail', index=False)
-                        gmail_summary.to_excel(writer, sheet_name='Gmail_Summary', index=False)
-                    if not ndc_detail.empty:
-                        ndc_detail.to_excel(writer, sheet_name='NDC_Detail', index=False)
-                        ndc_summary.to_excel(writer, sheet_name='NDC_Summary', index=False)
-                    if not dob_detail.empty:
-                        dob_detail.to_excel(writer, sheet_name='DOB_Detail', index=False)
-                        dob_summary.to_excel(writer, sheet_name='DOB_Summary', index=False)
-                excel_buffer.seek(0)
-                
-                st.download_button(
-                    label="⬇️ ALL Duplicates (Complete Excel)",
-                    data=excel_buffer.getvalue(),
-                    file_name=f"complete_duplicates_{int(time.time())}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                excel_download(dob_detail, dob_summary, "DOB Duplicates", "dob_duplicates")
             
             # Preview
-            with st.expander("👀 Data Preview"):
+            with st.expander("👀 Preview Data"):
                 st.dataframe(df.head(100), use_container_width=True)
                 
         except Exception as e:
@@ -272,7 +243,7 @@ def main():
             st.exception(e)
     
     else:
-        st.info("👆 **Upload Excel/CSV to start**")
+        st.info("👆 **Upload file to start**")
 
 if __name__ == "__main__":
     main()
