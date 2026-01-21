@@ -38,7 +38,7 @@ st.markdown("""
 st.set_page_config(page_title="Daily Tracker Pro", layout="wide")
 
 # YOUR EXACT CONFIGURATION
-ALLOWED_OWNERS = ["Aryasree", "Jayaram R", "Mandira Mukhopadhyay", "Reshma Prabhakaran", "Siva Lekshmi", "Suryan S", "Swathi Subhash", "Tessy Sebastian"]
+ALLOWED_OWNERS = ["Aryasree", "Jayaram R", "Kavitha R", "Mandira Mukhopadhyay", "Reshma Prabhakaran", "Siva Lekshmi", "Suryan S", "Swathi Subhash", "Tessy Sebastian"]
 CONVERTED_STAGES = {"Enrolled-Temp", "Enrolled-Temp-2", "Admission Fees Paid", "Refunds", "Enrolled Temp-3", "Enrolled"}
 CUTOFF = pd.Timestamp(2025, 10, 15)
 TODAY = pd.Timestamp(datetime.now().date())
@@ -367,3 +367,4 @@ else:
 
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #64748b; font-size: 0.9rem;'>Enterprise CRM Intelligence • 2026</p>", unsafe_allow_html=True)
+
