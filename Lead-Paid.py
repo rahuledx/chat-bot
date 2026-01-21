@@ -3,20 +3,23 @@ import pandas as pd
 import numpy as np
 import io
 import re
+import zipfile
+import requests
 from datetime import datetime
-import plotly.express as px
-import plotly.graph_objects as go
 
-# WORLD-CLASS CSS + DASHBOARD LAYOUT
+# WORLD-CLASS CSS
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 .main {font-family: 'Inter', sans-serif;}
 .hero-title {
-    font-size: 3.8rem !important; font-weight: 800 !important;
+    font-size: 3.2rem !important; font-weight: 800 !important;
     background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899);
     -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-    text-align: center; margin-bottom: 1rem !important;
+    text-align: center; margin-bottom: 0.5rem !important;
+}
+.subtitle-text {
+    text-align: center; color: #94a3b8; font-size: 1.2rem; margin-bottom: 3rem;
 }
 .glass-card {
     background: rgba(255,255,255,0.08) !important; backdrop-filter: blur(20px) !important;
@@ -24,20 +27,23 @@ st.markdown("""
     padding: 2.5rem !important; margin-bottom: 2rem !important;
     box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3) !important;
 }
-.metric-container {background: linear-gradient(145deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2)) !important;
-    border-radius: 20px !important; padding: 2rem !important; border: 1px solid rgba(99,102,241,0.3) !important;}
+.metric-container {
+    background: linear-gradient(145deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2)) !important;
+    border-radius: 20px !important; padding: 2rem !important; border: 1px solid rgba(99,102,241,0.3) !important;
+}
 .kpi-number {font-size: 2.8rem !important; font-weight: 800 !important; color: #ffffff !important;}
 </style>
 """, unsafe_allow_html=True)
 
-st.set_page_config(page_title="🚀 Daily Tracker Pro", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Daily Tracker Pro", layout="wide")
 
-# YOUR EXACT CONFIG + FUNCTIONS (UNCHANGED)
+# YOUR EXACT CONFIGURATION
 ALLOWED_OWNERS = ["Aryasree", "Jayaram R", "Mandira Mukhopadhyay", "Reshma Prabhakaran", "Siva Lekshmi", "Suryan S", "Swathi Subhash", "Tessy Sebastian"]
 CONVERTED_STAGES = {"Enrolled-Temp", "Enrolled-Temp-2", "Admission Fees Paid", "Refunds", "Enrolled Temp-3", "Enrolled"}
 CUTOFF = pd.Timestamp(2025, 10, 15)
 TODAY = pd.Timestamp(datetime.now().date())
 
+# YOUR EXACT HELPER FUNCTIONS
 def _string_has_time(s: str) -> bool:
     if not isinstance(s, str): return False
     if ":" in s: return True
@@ -94,7 +100,6 @@ def fix_date_to_after_cutoff(original_val: str, field_name: str, audit_list: lis
     return pd.NaT
 
 def compute_conversion_days(row):
-    """YOUR EXACT FUNCTION - TOTAL_SECONDS / 86400"""
     c = row.get("Created On")
     p = row.get("Payment Date New")
     if pd.isna(c) or pd.isna(p): return pd.NA
@@ -105,25 +110,74 @@ def compute_conversion_days(row):
         return round(float(diff_days), 4)
     except: return pd.NA
 
-# HERO SECTION
-st.markdown('<h1 class="hero-title">🚀 Daily Tracker Pro</h1>', unsafe_allow_html=True)
-st.markdown('<p style="text-align: center; color: #94a3b8; font-size: 1.3rem; margin-bottom: 3rem;">Executive Intelligence • Exact Tkinter Logic • Stunning Visuals</p>', unsafe_allow_html=True)
+# S3 URL DOWNLOAD
+@st.cache_data(ttl=3600)
+def download_and_extract_zip(url):
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        zip_buffer = io.BytesIO(response.content)
+        with zipfile.ZipFile(zip_buffer, 'r') as zip_ref:
+            files_in_zip = zip_ref.namelist()
+            excel_files = [f for f in files_in_zip if f.endswith(('.xlsx', '.xls', '.csv'))]
+            if not excel_files: return None
+            target_file = excel_files[0]
+            with zip_ref.open(target_file) as file:
+                content = file.read()
+                if target_file.endswith('.csv'):
+                    return pd.read_csv(io.BytesIO(content), dtype=str, low_memory=False)
+                else:
+                    return pd.read_excel(io.BytesIO(content), dtype=str)
+    except: return None
+
+# CLEAN HEADER - NO LOGO
+st.markdown('<h1 class="hero-title">Daily Tracker Pro</h1>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle-text">Executive CRM Intelligence • S3 URL Auto-Analysis • Real-time Metrics</p>', unsafe_allow_html=True)
+
+# INPUT TABS
+tab1, tab2 = st.tabs(["🔗 URL Mode", "📁 File Upload"])
+
+with tab1:
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    st.markdown("### 🌐 Paste S3 Presigned URL")
+    url_input = st.text_area("Paste your link here:", height=100, placeholder="https://lsqsgpcontainer.s3.ap-southeast-1.amazonaws.com/...")
+    if st.button("ANALYZE FROM URL", type="primary", use_container_width=True):
+        if url_input.strip():
+            df = download_and_extract_zip(url_input.strip())
+            if df is not None:
+                st.session_state.df = df
+                st.session_state.processed = True
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with tab2:
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("📁 Upload Excel/CSV", type=['xlsx', 'xls', 'csv'])
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # SIDEBAR
 with st.sidebar:
     st.markdown("### 🎛️ Executive Controls")
-    uploaded_file = st.file_uploader("📁 Upload CRM Data", type=['xlsx', 'csv'])
     selected_owners = st.multiselect("👥 Team Members", ALLOWED_OWNERS, default=ALLOWED_OWNERS)
 
-# MAIN DASHBOARD SECTIONS
-if uploaded_file is not None:
-    with st.spinner("🔮 Computing Executive Intelligence..."):
-        # YOUR EXACT PROCESSING
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file, dtype=str, low_memory=False)
-        else:
-            df = pd.read_excel(uploaded_file, dtype=str)
-        
+# SESSION STATE
+if 'df' not in st.session_state:
+    st.session_state.df = None
+    st.session_state.processed = False
+
+# LOAD DATA
+df = None
+if st.session_state.df is not None and st.session_state.processed:
+    df = st.session_state.df.copy()
+elif uploaded_file is not None:
+    if uploaded_file.name.endswith('.csv'):
+        df = pd.read_csv(uploaded_file, dtype=str, low_memory=False)
+    else:
+        df = pd.read_excel(uploaded_file, dtype=str)
+
+# MAIN PROCESSING
+if df is not None:
+    with st.spinner("Computing Executive Intelligence..."):
         df.columns = [c.strip() for c in df.columns]
         df = df[df["Owner"].isin(selected_owners)].copy()
         
@@ -131,9 +185,10 @@ if uploaded_file is not None:
             df["Lead Source"] = df["Lead Source"].astype(str).str.strip()
             df = df[df["Lead Source"] != "Amrita Alumni ALL 2023"]
         
-        # EXACT DATE PROCESSING LOOP
         audit = []
         created_series, payment_series = [], []
+        total_rows = len(df)
+        
         for idx, raw_row in df.iterrows():
             raw_created = raw_row.get("Created On", "")
             raw_payment = raw_row.get("Payment Date New", "")
@@ -150,7 +205,6 @@ if uploaded_file is not None:
         df["Created On"] = pd.Series(created_series, index=df.index)
         df["Payment Date New"] = pd.Series(payment_series, index=df.index)
         
-        # EXACT METRICS CALCULATION
         df["Created_Date"] = df["Created On"].dt.normalize()
         converted_df = df[df["Lead Stage"].isin(CONVERTED_STAGES)].copy()
         converted_df["Conversion_Days"] = converted_df.apply(compute_conversion_days, axis=1)
@@ -176,7 +230,7 @@ if uploaded_file is not None:
         total_avg = round(conv_valid["Conversion_Days"].sum()/len(conv_valid), 2) if len(conv_valid) > 0 else 0
         lead_df.loc[len(lead_df)] = ["**TOTAL**", total_leads, total_paid, total_pct, total_avg]
 
-    # ═══ 1. EXECUTIVE KPI DASHBOARD ═══
+    # EXECUTIVE KPI DASHBOARD
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.markdown("## 📊 Executive Intelligence Dashboard")
     
@@ -189,7 +243,7 @@ if uploaded_file is not None:
     
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ═══ 2. PERFORMANCE SUMMARY TABLE ═══
+    # PERFORMANCE SUMMARY
     c1, c2 = st.columns([3,1])
     with c1:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
@@ -207,65 +261,52 @@ if uploaded_file is not None:
         st.dataframe(top3[['Owner', '% of Conversion']], use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ═══ 3. CONVERSION RATE CHART ═══
+    # CONVERSION CHARTS
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.markdown("## 📈 Conversion Intelligence")
     
-    fig1 = px.bar(
-        lead_df[lead_df['Owner'] != '**TOTAL**'], 
-        x='Owner', y='% of Conversion',
-        title="Conversion Rates by Owner",
-        color='% of Conversion',
-        color_continuous_scale='Viridis',
-        text='% of Conversion'
-    )
-    fig1.update_layout(height=450, showlegend=False, title_font_size=16)
-    fig1.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-    st.plotly_chart(fig1, use_container_width=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### Conversion Rate Distribution")
+        conv_data = lead_df[lead_df['Owner'] != '**TOTAL**']
+        if not conv_data.empty:
+            max_rate = conv_data['% of Conversion'].max()
+            for _, row in conv_data.iterrows():
+                progress_width = min((row['% of Conversion'] / max_rate) * 100, 100)
+                st.markdown(f"""
+                <div style='margin: 0.5rem 0;'>
+                    <div style='display: flex; justify-content: space-between; margin-bottom: 0.25rem;'>
+                        <span style='font-weight: 600; color: white;'>{row['Owner']}</span>
+                        <span style='color: #94a3b8;'>{row['% of Conversion']:.1f}%</span>
+                    </div>
+                    <div style='background: rgba(255,255,255,0.1); border-radius: 10px; height: 12px;'>
+                        <div style='width: {progress_width}%; height: 100%; background: linear-gradient(90deg, #10b981, #34d399); border-radius: 10px;'></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("### Days to Convert")
+        days_data = lead_df[lead_df['Owner'] != '**TOTAL**']
+        if not days_data.empty:
+            max_days = days_data['Avg Conv Days'].max()
+            for _, row in days_data.iterrows():
+                progress_width = min((row['Avg Conv Days'] / max_days) * 100, 100)
+                st.markdown(f"""
+                <div style='margin: 0.5rem 0;'>
+                    <div style='display: flex; justify-content: space-between; margin-bottom: 0.25rem;'>
+                        <span style='font-weight: 600; color: white;'>{row['Owner'][:12]}...</span>
+                        <span style='color: #94a3b8;'>{row['Avg Conv Days']:.1f}d</span>
+                    </div>
+                    <div style='background: rgba(255,255,255,0.1); border-radius: 10px; height: 12px;'>
+                        <div style='width: {progress_width}%; height: 100%; background: linear-gradient(90deg, #ef4444, #f87171); border-radius: 10px;'></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ═══ 4. DAYS TO CONVERT CHART ═══
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        fig2 = px.bar(
-            lead_df[lead_df['Owner'] != '**TOTAL**'],
-            x='Owner', y='Avg Conv Days',
-            title="Days to Convert",
-            color='Avg Conv Days',
-            color_continuous_scale='Reds',
-            text='Avg Conv Days'
-        )
-        fig2.update_layout(height=400, showlegend=False)
-        fig2.update_traces(texttemplate='%{text:.1f}', textposition='outside')
-        st.plotly_chart(fig2, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    with c2:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("### 📋 Last 7 Days Performance")
-        
-        today_ts = pd.Timestamp(datetime.now().date())
-        start_7d = today_ts - pd.Timedelta(days=6)
-        week_rows = []
-        for owner in owners:
-            apps_mask = ((df["Owner"] == owner) & 
-                        (df["Created_Date"].notna()) & 
-                        (df["Created_Date"] >= start_7d) &
-                        (df["Lead Stage"] == "Application Submitted"))
-            paid_mask = ((df["Owner"] == owner) & 
-                        (df["Created_Date"].notna()) & 
-                        (df["Created_Date"] >= start_7d) &
-                        (df["Lead Stage"].isin(CONVERTED_STAGES)))
-            week_rows.append([owner, int(apps_mask.sum()), int(paid_mask.sum())])
-        
-        week_df = pd.DataFrame(week_rows, columns=["Owner", "Applications", "Paid"])
-        week_df.loc[len(week_df)] = ["TOTAL", week_df["Applications"].sum(), week_df["Paid"].sum()]
-        st.dataframe(week_df, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # ═══ 5. EXECUTIVE DOWNLOAD PACK ═══
+    # DOWNLOAD CENTER
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.markdown("## 💎 Executive Download Center")
     
@@ -280,63 +321,49 @@ if uploaded_file is not None:
     conv_export = converted_df.copy()
     conv_export["Created On (Export)"] = conv_export["Created On"].apply(format_export_datetime)
     conv_export["Payment Date New (Export)"] = conv_export["Payment Date New"].apply(format_export_datetime)
-    conv_export["Conversion_Days (Export)"] = conv_export["Conversion_Days"].apply(
-        lambda x: round(float(x), 4) if pd.notna(x) else ""
-    )
     
     audit_df = pd.DataFrame(audit, columns=["row_index", "field", "original_value", "fixed_timestamp", "action"])
-    if not audit_df.empty:
-        audit_df["fixed_timestamp"] = audit_df["fixed_timestamp"].apply(
-            lambda x: pd.to_datetime(x).strftime("%d-%m-%Y %H:%M") if pd.notna(x) else ""
-        )
     
     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-        lead_df.to_excel(writer, sheet_name="🏆_Lead_to_Paid", index=False)
-        week_df.to_excel(writer, sheet_name="📅_Week_Performance", index=False)
-        conv_export.to_excel(writer, sheet_name="💰_Paid_Leads_Detail", index=False)
+        lead_df.to_excel(writer, sheet_name="Lead_to_Paid", index=False)
+        conv_export.to_excel(writer, sheet_name="Paid_Leads", index=False)
         if not audit_df.empty:
-            audit_df.to_excel(writer, sheet_name="🔧_Date_Fixes", index=False)
+            audit_df.to_excel(writer, sheet_name="Date_Fixes", index=False)
     
-    excel_buffer.seek(0)
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.download_button(
-            "🚀 Complete Executive Pack",
-            excel_buffer.getvalue(),
-            f"Tracker_Pro_{timestamp}.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+    st.download_button(
+        "📊 Download Executive Pack",
+        excel_buffer.getvalue(),
+        f"Tracker_Pro_{timestamp}.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ═══ 6. DETAIL PANELS ═══
+    # DETAIL EXPANDERS
     col1, col2 = st.columns(2)
     with col1:
-        with st.expander("👥 Paid Leads Detail (Interactive)", expanded=False):
+        with st.expander("👥 Paid Leads Detail"):
             st.dataframe(conv_export, use_container_width=True)
-    
     with col2:
-        with st.expander("🔧 Date Processing Audit", expanded=False):
+        with st.expander("🔧 Date Audit"):
             if not audit_df.empty:
                 st.dataframe(audit_df, use_container_width=True)
             else:
-                st.success("✅ No date fixes required!")
+                st.success("✅ Perfect dates!")
 
 else:
     st.markdown("""
     <div style='text-align: center; padding: 6rem 2rem;'>
         <div style='font-size: 1.6rem; color: #64748b; margin-bottom: 2rem;'>
-            Upload CRM data to unlock real-time executive intelligence
+            Paste S3 URL or upload file for instant analysis
         </div>
-        <div style='font-size: 7rem; margin: 2rem 0;'>🚀</div>
         <div style='background: linear-gradient(135deg, #667eea, #764ba2); 
                     color: white; padding: 3rem; border-radius: 24px; max-width: 700px; margin: 0 auto;'>
-            <strong>⚡ Exact Tkinter Logic</strong> • <strong>📊 Stunning Visuals</strong> • 
-            <strong>🎯 Real-time Charts</strong> • <strong>💾 4-Sheet Excel Export</strong>
+            <strong>🔗 S3 Auto-Download</strong> • <strong>📊 Live Metrics</strong> • 
+            <strong>🎯 Team Performance</strong> • <strong>💾 Excel Export</strong>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
 st.markdown("---")
-st.markdown("<p style='text-align: center; color: #64748b; font-size: 0.9rem;'>Powered by Streamlit • Enterprise-Grade CRM Intelligence</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #64748b; font-size: 0.9rem;'>Enterprise CRM Intelligence • 2026</p>", unsafe_allow_html=True)
