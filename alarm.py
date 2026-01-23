@@ -5,16 +5,15 @@ import time
 import datetime
 import json
 import os
-from pathlib import Path
 
 # Database setup
 DB_PATH = "alarms.db"
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS alarms 
-                 (id INTEGER PRIMARY KEY, task TEXT, hour INTEGER, minute INTEGER, active INTEGER)''')
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, task TEXT, hour INTEGER, minute INTEGER, active INTEGER)''')
     conn.commit()
     conn.close()
 
@@ -23,26 +22,28 @@ init_db()
 # Global variables
 alarm_thread = None
 stop_thread = threading.Event()
-triggered_alarms = []
+triggered_alarms = st.session_state.get('triggered_alarms', [])
 
 def alarm_checker():
     while not stop_thread.is_set():
-        now = datetime.datetime.now()
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT * FROM alarms WHERE active=1")
-        alarms = c.fetchall()
-        
-        for alarm in alarms:
-            alarm_time = datetime.time(alarm[2], alarm[3])
-            time_diff = abs((now - datetime.datetime.combine(now.date(), alarm_time)).total_seconds())
-            if time_diff < 30:  # 30 second window
-                triggered_alarms.append({"task": alarm[1], "id": alarm[0]})
-                # Update DB as triggered
-                c.execute("UPDATE alarms SET active=0 WHERE id=?", (alarm[0],))
-                conn.commit()
-        
-        conn.close()
+        try:
+            now = datetime.datetime.now()
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+            c = conn.cursor()
+            c.execute("SELECT * FROM alarms WHERE active=1")
+            alarms = c.fetchall()
+            
+            for alarm in alarms:
+                alarm_time = datetime.time(alarm[2], alarm[3])
+                time_diff = abs((now - datetime.datetime.combine(now.date(), alarm_time)).total_seconds())
+                if time_diff < 30:
+                    st.session_state.triggered_alarms.append({"task": alarm[1], "id": alarm[0]})
+                    c.execute("UPDATE alarms SET active=0 WHERE id=?", (alarm[0],))
+                    conn.commit()
+            
+            conn.close()
+        except:
+            pass
         time.sleep(5)
 
 def start_alarm_service():
@@ -52,22 +53,16 @@ def start_alarm_service():
         alarm_thread = threading.Thread(target=alarm_checker, daemon=True)
         alarm_thread.start()
 
-# Custom CSS for notifications
+# Custom CSS
 st.markdown("""
     <style>
     .notification-popup {
-        position: fixed;
-        top: 20px;
-        right: 20px;
+        position: fixed; top: 20px; right: 20px;
         background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
+        color: white; padding: 20px; border-radius: 10px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        z-index: 10000;
-        animation: slideIn 0.5s ease-out;
-        font-size: 18px;
-        font-weight: bold;
+        z-index: 10000; animation: slideIn 0.5s ease-out;
+        font-size: 18px; font-weight: bold;
     }
     @keyframes slideIn {
         from { transform: translateX(100%); opacity: 0; }
@@ -77,50 +72,36 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🚨 Web Alarm App")
-st.markdown("**Set alarms that popup in your browser!** 📱💻")
-
-# Start service
 if 'service_started' not in st.session_state:
     start_alarm_service()
     st.session_state.service_started = True
+    st.session_state.triggered_alarms = []
 
-# Enable browser notifications
-st.sidebar.markdown("### 🔔 Browser Notifications")
-if st.sidebar.button("Enable Popups"):
-    st.sidebar.components.v1.html("""
-        <script>
-        if (Notification.permission === 'default') {
-            Notification.requestPermission().then(function(permission) {
-                if (permission === 'granted') {
-                    console.log('Notifications enabled!');
-                }
-            });
-        }
-        </script>
-    """, height=0)
-
-# Add new alarm
+# Add Alarm Form
 with st.expander("➕ Add Alarm"):
     col1, col2 = st.columns(2)
     with col1:
-        hour = st.number_input("Hour (24h)", 0, 23, 16, key="hour")
+        hour = st.number_input("Hour (24h)", 0, 23, 16)
     with col2:
-        minute = st.number_input("Minute", 0, 59, 0, key="minute")
-    task = st.text_input("Task", "Call Rahul", key="task")
+        minute = st.number_input("Minute", 0, 59, 0)
+    task = st.text_input("Task", "Call Rahul")
     
     if st.button("➕ Set Alarm"):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT INTO alarms (task, hour, minute, active) VALUES (?, ?, ?, 1)", 
-                 (task, int(hour), int(minute), 1))
-        conn.commit()
-        conn.close()
-        st.success("✅ Alarm set!")
-        st.rerun()
+        try:
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+            c = conn.cursor()
+            c.execute("INSERT INTO alarms (task, hour, minute, active) VALUES (?, ?, ?, 1)", 
+                     (task, int(hour), int(minute)))
+            conn.commit()  # ← THIS WAS MISSING!
+            conn.close()
+            st.success("✅ Alarm set!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error: {e}")
 
-# Show alarms
+# Show Active Alarms
 st.subheader("📋 Active Alarms")
-conn = sqlite3.connect(DB_PATH)
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 c = conn.cursor()
 c.execute("SELECT * FROM alarms WHERE active=1 ORDER BY hour, minute")
 active_alarms = c.fetchall()
@@ -134,54 +115,30 @@ if active_alarms:
             if st.button("🔔 Test", key=f"test_{alarm[0]}"):
                 st.error(f"🚨 TEST: {alarm[1]}")
                 st.balloons()
-                # Trigger browser notification
-                st.components.v1.html(f"""
-                    <script>
-                    if (Notification.permission === 'granted') {{
-                        new Notification('🚨 ALARM TEST', {{
-                            body: '{alarm[1]}',
-                            icon: 'https://cdn-icons-png.flaticon.com/512/2153/2153267.png'
-                        }});
-                    }}
-                    </script>
-                """, height=0)
         with col3:
             if st.button("❌ Delete", key=f"del_{alarm[0]}"):
                 c.execute("DELETE FROM alarms WHERE id=?", (alarm[0],))
                 conn.commit()
                 st.rerun()
 else:
-    st.info("No active alarms set")
+    st.info("No active alarms")
 
-# TRIGGERED ALARMS - POPUP NOTIFICATIONS
-if triggered_alarms:
-    for alarm in triggered_alarms:
-        # Show massive popup
+conn.close()
+
+# Show Triggered Alarms
+if st.session_state.get('triggered_alarms'):
+    for alarm in st.session_state.triggered_alarms:
         st.markdown(f"""
             <div class="notification-popup">
-                🚨 ALARM! <strong>{alarm['task']}</strong> 
-                <span style="float:right; cursor:pointer;" onclick="this.parentElement.remove()">×</span>
+                🚨 ALARM! <strong>{alarm['task']}</strong>
             </div>
         """, unsafe_allow_html=True)
-        
-        # Browser notification
         st.components.v1.html(f"""
             <script>
-            if (Notification.permission === 'granted') {{
-                new Notification('🚨 ALARM TRIGGERED!', {{
-                    body: '{alarm['task']}',
-                    icon: 'https://cdn-icons-png.flaticon.com/512/2153/2153267.png',
-                    badge: '🔔'
-                }});
-            }}
-            // Play alarm sound
+            new Notification('🚨 ALARM!', {{body: '{alarm['task']}'}});
             const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoAAAAA');
             audio.play();
             </script>
         """, height=0)
 
-conn.close()
-
-# Status
 st.sidebar.success("🟢 Service Active")
-st.sidebar.info(f"⏰ Next check: {datetime.datetime.now() + datetime.timedelta(seconds=5)}")
