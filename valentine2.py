@@ -1,11 +1,11 @@
 import streamlit as st
-import pywhatkit as pwk
 import time
 from datetime import datetime
+import json
 
 st.set_page_config(page_title="A Love Promise to Amee", layout="wide", initial_sidebar_state="collapsed", page_icon="💕")
 
-# 🔥 ULTRA-VISIBLE CLASSIC ROMANTIC - FULL CODE
+# 🔥 ULTRA-VISIBLE CLASSIC ROMANTIC - FULL CODE (CSS unchanged)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap');
@@ -167,7 +167,6 @@ button:hover {
 """, unsafe_allow_html=True)
 
 # 🔥 CONFIG
-YOUR_WHATSAPP_NUMBER = "+918848385042"
 AMEE_NICKNAME = "Amee"
 
 # CLASSIC LITERARY QUOTES
@@ -192,8 +191,7 @@ if 'initialized' not in st.session_state:
     st.session_state.preferences = {}
     st.session_state.choices = {}
     st.session_state.proposal_accepted = False
-    st.session_state.phone = "+91XXXXXXXXXX"  # 👈 PUT AMEE'S NUMBER HERE
-    st.session_state.results_sent = False
+    st.session_state.results_shared = False
     st.session_state.initialized = True
 
 def ai_love_analysis(answers, preferences):
@@ -311,53 +309,76 @@ else:
             if st.button(f"💝 {gift}", use_container_width=True, key=f"gift_{i}"):
                 st.session_state.choices['gift'] = gift
     
-    if st.button(f"💍 Our promise, {AMEE_NICKNAME}", use_container_width=True, key="create_memory"):
-        st.success("Sealed for all time...")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if st.button(f"💌 Share Our Promise", use_container_width=True, key="share_results"):
+            st.session_state.results_shared = True
+            st.success("✨ Results ready to share!")
+            st.rerun()
+    
+    if st.session_state.results_shared and st.session_state.choices.get('date') and st.session_state.choices.get('gift'):
         st.markdown(f'''<div class="promise-vault" style="padding:4rem;">
             <h2 style="font-family:Playfair Display;font-size:4rem;text-align:center;">{AMEE_NICKNAME}</h2>
             <div class="love-quote" style="font-size:1.8rem;"><strong>"You are my heart, my life, my one and only thought."</strong></div>
             <p style="font-family:Cormorant Garamond;font-size:1.6rem;text-align:center;">— Arthur Conan Doyle</p>
         </div>''', unsafe_allow_html=True)
         
-        # 🕶️ SILENT WHATSAPP SEND TO YOU
-        if not st.session_state.results_sent and st.session_state.choices.get('date') and st.session_state.choices.get('gift'):
-            results = f"""
-AMEE RESULTS 💕
-📱 PHONE: {st.session_state.phone}
-💖 DATE: {st.session_state.choices['date']}
-💝 GIFT: {st.session_state.choices['gift']}
+        # 📋 CLEAN RESULTS DISPLAY
+        results = f"""
+💕 AMEE'S LOVE PROMISE RESULTS 💕
 ⏰ {datetime.now().strftime('%Y-%m-%d %H:%M IST')}
 
-DREAMS:
-""" + "\n".join([f"D{i+1}: {ans[:80]}" for i, ans in enumerate(st.session_state.answers.values())]) + f"""
+💖 CHOSEN DATE: {st.session_state.choices['date']}
+💝 CHOSEN GIFT: {st.session_state.choices['gift']}
 
-PREFERENCES:
-""" + "\n".join([f"{k.title()}: {v[:60]}" for k, v in st.session_state.preferences.items()])
-            
-            try:
-                pwk.sendwhatmsg_instantly(YOUR_WHATSAPP_NUMBER, results, 12)
-                st.session_state.results_sent = True
-            except:
-                pass
+🌹 HER DREAMS:
+""" + "\n".join([f"  • {ans[:100]}" for ans in st.session_state.answers.values()]) + f"""
+
+💫 HER PREFERENCES:
+""" + "\n".join([f"  • {k.title()}: {v[:80]}" for k, v in st.session_state.preferences.items()])
         
-        with st.expander("💕 Our Vow"):
+        st.markdown(f'<div class="vault"><h3 style="color:#1A0D1F;font-size:2.2rem;">📋 Your Promise Summary</h3></div>', unsafe_allow_html=True)
+        st.code(results, language="text")
+        
+        col_copy, col_json = st.columns(2)
+        with col_copy:
+            st.download_button(
+                label="💾 Copy to Clipboard",
+                data=results,
+                file_name=f"Amee_Promise_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                mime="text/plain"
+            )
+        with col_json:
+            json_data = {
+                "name": AMEE_NICKNAME,
+                "date": st.session_state.choices['date'],
+                "gift": st.session_state.choices['gift'],
+                "answers": dict(st.session_state.answers),
+                "preferences": dict(st.session_state.preferences),
+                "timestamp": datetime.now().isoformat()
+            }
+            st.download_button(
+                label="💾 Save as JSON",
+                data=json.dumps(json_data, indent=2),
+                file_name=f"Amee_Promise_Data.json",
+                mime="application/json"
+            )
+        
+        with st.expander("💕 Our Eternal Vow"):
             st.markdown(f"""
-            **For {AMEE_NICKNAME}, eternally**
+            **For {AMEE_NICKNAME}, forever cherished**
             
-            💖 Place: {st.session_state.choices.get('date', 'Our secret')}
-            💝 Gift: {st.session_state.choices.get('gift', 'My devotion')}
+            💖 Our Place: {st.session_state.choices.get('date', 'Our secret spot')}
+            💝 Our Gift: {st.session_state.choices.get('gift', 'My endless devotion')}
             
             **"Whatever our souls are made of, his and mine are the same."**
             *— Emily Brontë*
             """)
 
-# 🔥 NEW CLASSIC FOOTER - NO CRINGE
+# 🔥 CLASSIC FOOTER
 st.markdown(f"""
 <div style="text-align:center;padding:5rem;background:linear-gradient(135deg,#1A0D1F,#2D1B3A);color:#FFD700;font-family:Playfair Display;font-size:3.2rem;border-radius:35px;margin:5rem auto;max-width:1000px;box-shadow:0 60px 150px rgba(0,0,0,0.7);border:4px solid #FFED4E;">
 <div style='font-size:4.2rem;font-weight:700;margin-bottom:1rem;text-shadow:2px 2px 4px rgba(0,0,0,0.8);'>{AMEE_NICKNAME}</div>
 <span style='font-size:1.1em;font-weight:400;letter-spacing:1px;'>— the quiet of my heart</span>
 </div>
-<style>
-@keyframes spin{{0%{{transform:rotate(0deg);}}100%{{transform:rotate(360deg);}}}}
-</style>
 """, unsafe_allow_html=True)
