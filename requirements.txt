@@ -1,6 +1,4 @@
 streamlit
 pandas
-openpyxl
-plotly
-pywhatkit
-
+gspread
+oauth2client
