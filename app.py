@@ -134,21 +134,6 @@ st.markdown(f"""
         color: #FFFFFF !important;
     }}
 
-    button[role="tab"] {{
-        background: #FFFFFF !important;
-        color: {TEXT_SECONDARY} !important;
-        border: 1px solid {BORDER} !important;
-        border-radius: 12px !important;
-        padding: 10px 14px !important;
-        font-weight: 600 !important;
-    }}
-
-    button[role="tab"][aria-selected="true"] {{
-        background: {AMRITA_MAROON} !important;
-        color: #FFFFFF !important;
-        border-color: {AMRITA_MAROON} !important;
-    }}
-
     div[data-testid="stDataFrame"] {{
         background: #FFFFFF !important;
         border: 1px solid {BORDER} !important;
@@ -169,22 +154,6 @@ st.markdown(f"""
         padding: 18px;
         box-shadow: 0 6px 18px rgba(17, 24, 39, 0.04);
         margin-bottom: 1rem;
-    }}
-
-    .open-link {{
-        display: inline-block;
-        background: #A4123F;
-        color: white !important;
-        text-decoration: none;
-        padding: 10px 16px;
-        border-radius: 12px;
-        font-weight: 700;
-        margin-top: 10px;
-    }}
-
-    .open-link:hover {{
-        background: #7D1030;
-        color: white !important;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -343,12 +312,11 @@ def upsert_review_row(
         ws.append_row(new_row)
 
 
-def build_detail_url(startup_name, email):
-    params = urlencode({
+def build_detail_params(startup_name, email):
+    return {
         "startup": str(startup_name).strip(),
         "email": str(email).strip()
-    })
-    return f"?{params}"
+    }
 
 
 def find_application(df, startup_name, email):
@@ -437,10 +405,11 @@ merged_df["Cancellation Request"] = merged_df["Cancellation Request"].replace(""
 
 
 # =========================================================
-# FULL PAGE DETAIL VIEW
+# DETAILS PAGE
 # =========================================================
-query_startup = st.query_params.get("startup")
-query_email = st.query_params.get("email")
+params = st.experimental_get_query_params()
+query_startup = params.get("startup", [None])[0]
+query_email = params.get("email", [None])[0]
 
 if query_startup and query_email:
     selected_row = find_application(merged_df, query_startup, query_email)
@@ -449,10 +418,14 @@ if query_startup and query_email:
         st.error("Application not found.")
         st.stop()
 
+    if st.button("← Back to Dashboard"):
+        st.experimental_set_query_params()
+        st.rerun()
+
     st.markdown(f"""
     <div class="portal-banner">
         <h1 style="margin:0;">{selected_row.get('Startup Name', 'Application Details')}</h1>
-        <div class="portal-sub">Full application details view</div>
+        <div class="portal-sub">Application details and review actions</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -473,45 +446,138 @@ if query_startup and query_email:
 
     st.markdown("---")
 
-    detail_fields = [
-        "Date",
-        "Startup Name",
-        "Name",
-        "ADDRESS",
-        "EMAIL",
-        "PHONE",
-        "BRIEFLY DESCRIBE THE COMPANY AND PRODUCT OFFERED",
-        "DESCRIBE YOUR TEAM AND BACKGROUND",
-        "DESCRIBE THE PROBLEM YOU ARE TRYING TO SOLVE",
-        "WHAT IS UNIQUE ABOUT YOUR SOLUTION",
-        "PLEASE PROVIDE VALUE PROPOSITION PROVIDED FOR THE CUSTOMER SEGMENT",
-        "WHO ARE YOUR COMPETITORS AND WHAT IS YOUR COMPETITVE ADVANTAGE",
-        "PLEASE EXPLAIN YOUR REVENUE MODEL",
-        "WHAT IS THE POTENTIAL MARKET SIZE FOR YOUR PRODUCT",
-        "TYPE OF INCUBATION NEEDED",
-        "WHERE DID YOU HEAR ABOUT AMRITA TBI?",
-        "AT WHAT STAGE IS YOUR STARTUP?",
-        "WHAT IS THE CURRENT TRACTION?",
-        "HOW DOES THE COMPANY MARKET OR PLAN TO MARKET ITS PRODUCTS OR SERVICES?",
-        "CITY/TOWN",
-        "STATE",
-        "KEEP ME UPDATED ABOUT FUTURE ENTREPRENEURSHIP PROGRAMS AND FUNDING OPPORTUNITIES",
-        "Reviewer Name",
-        "Reviewer Comments",
-        "Reason for Rejection"
-    ]
+    tab1, tab2, tab3 = st.tabs(["Application Details", "Review Actions", "Comments & Documents"])
 
-    for field in detail_fields:
-        value = selected_row.get(field, "")
-        if pd.notna(value) and str(value).strip():
-            st.markdown(f"### {field}")
-            st.write(value)
+    with tab1:
+        detail_fields = [
+            "Date",
+            "Startup Name",
+            "Name",
+            "ADDRESS",
+            "EMAIL",
+            "PHONE",
+            "BRIEFLY DESCRIBE THE COMPANY AND PRODUCT OFFERED",
+            "DESCRIBE YOUR TEAM AND BACKGROUND",
+            "DESCRIBE THE PROBLEM YOU ARE TRYING TO SOLVE",
+            "WHAT IS UNIQUE ABOUT YOUR SOLUTION",
+            "PLEASE PROVIDE VALUE PROPOSITION PROVIDED FOR THE CUSTOMER SEGMENT",
+            "WHO ARE YOUR COMPETITORS AND WHAT IS YOUR COMPETITVE ADVANTAGE",
+            "PLEASE EXPLAIN YOUR REVENUE MODEL",
+            "WHAT IS THE POTENTIAL MARKET SIZE FOR YOUR PRODUCT",
+            "TYPE OF INCUBATION NEEDED",
+            "WHERE DID YOU HEAR ABOUT AMRITA TBI?",
+            "AT WHAT STAGE IS YOUR STARTUP?",
+            "WHAT IS THE CURRENT TRACTION?",
+            "HOW DOES THE COMPANY MARKET OR PLAN TO MARKET ITS PRODUCTS OR SERVICES?",
+            "CITY/TOWN",
+            "STATE",
+            "KEEP ME UPDATED ABOUT FUTURE ENTREPRENEURSHIP PROGRAMS AND FUNDING OPPORTUNITIES"
+        ]
 
-    url_fields = [col for col in selected_row if "http" in str(selected_row[col])]
-    if url_fields:
-        st.markdown("### Document Links")
-        for col in url_fields:
-            st.write(f"**{col}:** {selected_row[col]}")
+        for field in detail_fields:
+            value = selected_row.get(field, "")
+            if pd.notna(value) and str(value).strip():
+                st.markdown(f"### {field}")
+                st.write(value)
+
+    with tab2:
+        review_status_options = [
+            "", "To be Reviewed", "Incomplete", "On Hold", "Selected",
+            "Rejected", "System Rejected"
+        ]
+        application_stage_options = [
+            "Submitted", "Under Review", "Closed", "Cancelled"
+        ]
+        cancellation_request_options = [
+            "No Request", "Requested", "Approved"
+        ]
+
+        current_review_status = selected_row.get("Review Status", "")
+        current_stage = selected_row.get("Application Stage", "Submitted")
+        current_cancel = selected_row.get("Cancellation Request", "No Request")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            review_status = st.selectbox(
+                "Review Status",
+                review_status_options,
+                index=review_status_options.index(current_review_status) if current_review_status in review_status_options else 0
+            )
+
+            application_stage = st.selectbox(
+                "Application Stage",
+                application_stage_options,
+                index=application_stage_options.index(current_stage) if current_stage in application_stage_options else 0
+            )
+
+            cancellation_request = st.selectbox(
+                "Cancellation Request",
+                cancellation_request_options,
+                index=cancellation_request_options.index(current_cancel) if current_cancel in cancellation_request_options else 0
+            )
+
+        with col2:
+            reviewer_name = st.text_input(
+                "Reviewer Name",
+                value=selected_row.get("Reviewer Name", "")
+            )
+
+            evaluation_date = st.text_input(
+                "Evaluation Date (YYYY-MM-DD)",
+                value=selected_row.get("Evaluation Date", "")
+            )
+
+            decision_date = st.text_input(
+                "Decision Date (YYYY-MM-DD)",
+                value=selected_row.get("Decision Date", "")
+            )
+
+        reason_for_rejection = st.text_area(
+            "Reason for Rejection",
+            value=selected_row.get("Reason for Rejection", "")
+        )
+
+        reviewer_comments = st.text_area(
+            "Reviewer Comments",
+            value=selected_row.get("Reviewer Comments", "")
+        )
+
+        if st.button("Save Review Update"):
+            startup_name = selected_row.get("Startup Name", "")
+            email = selected_row.get("EMAIL", "")
+
+            upsert_review_row(
+                startup_name=startup_name,
+                email=email,
+                review_status=review_status,
+                application_stage=application_stage,
+                cancellation_request=cancellation_request,
+                reviewer_name=reviewer_name,
+                reviewer_comments=reviewer_comments,
+                evaluation_date=evaluation_date,
+                decision_date=decision_date,
+                reason_for_rejection=reason_for_rejection
+            )
+
+            st.cache_data.clear()
+            st.success("Review Tracker updated successfully.")
+            st.rerun()
+
+    with tab3:
+        st.write(f"**Reviewer Name:** {selected_row.get('Reviewer Name', '')}")
+        st.write(f"**Reviewer Comments:** {selected_row.get('Reviewer Comments', '')}")
+        st.write(f"**Reason for Rejection:** {selected_row.get('Reason for Rejection', '')}")
+        st.write(f"**Evaluation Date:** {selected_row.get('Evaluation Date', '')}")
+        st.write(f"**Decision Date:** {selected_row.get('Decision Date', '')}")
+
+        st.markdown("#### Document Links")
+        url_fields = [col for col in selected_row if "http" in str(selected_row[col])]
+        if url_fields:
+            for col in url_fields:
+                st.write(f"**{col}:** {selected_row[col]}")
+        else:
+            st.info("No document links found in the current application data.")
 
     st.stop()
 
@@ -536,12 +602,12 @@ kpis = {
 
 
 # =========================================================
-# HEADER
+# DASHBOARD
 # =========================================================
 st.markdown("""
 <div class="portal-banner">
     <h1 style="margin:0;">Amrita TBI - Incubation Portal</h1>
-    <div class="portal-sub">Application dashboard with review workflow, KPI tracking, and full-page detail view.</div>
+    <div class="portal-sub">Application dashboard with direct navigation to the startup details page.</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -557,10 +623,6 @@ for start in range(0, len(kpi_items), 5):
 
 st.markdown("---")
 
-
-# =========================================================
-# SEARCH + TABLE
-# =========================================================
 st.subheader("Submitted Applications")
 
 search_term = st.text_input(
@@ -603,177 +665,32 @@ st.dataframe(display_df, use_container_width=True, height=420)
 
 st.markdown("---")
 
-
-# =========================================================
-# DETAILS + REVIEW PANEL
-# =========================================================
-st.subheader("Startup Details & Review Panel")
-
 if filtered_df.empty:
     st.info("No matching applications found.")
     st.stop()
 
-selected_index = st.selectbox(
-    "Select an application",
-    filtered_df.index,
-    format_func=lambda idx: filtered_df.loc[idx, "Startup Name"] if str(filtered_df.loc[idx, "Startup Name"]).strip() else f"Application {idx}"
+startup_options = filtered_df.apply(
+    lambda row: f"{row.get('Startup Name', '')} | {row.get('EMAIL', '')}",
+    axis=1
+).tolist()
+
+selected_option = st.selectbox(
+    "Select a startup to open details page",
+    options=[""] + startup_options
 )
 
-selected_row = filtered_df.loc[selected_index].to_dict()
-
-st.markdown(f"""
-<div class="info-card">
-    <h3 style="margin-top:0;">Selected Application: {selected_row.get('Startup Name', 'N/A')}</h3>
-    <p><strong>Current Review Status:</strong> {selected_row.get('Final Status', 'Submitted')}</p>
-    <p><strong>Application Stage:</strong> {selected_row.get('Application Stage', 'Submitted')}</p>
-    <p><strong>Contact:</strong> {selected_row.get('Name', 'N/A')} | {selected_row.get('EMAIL', 'N/A')} | {selected_row.get('PHONE', 'N/A')}</p>
-</div>
-""", unsafe_allow_html=True)
-
-detail_url = build_detail_url(
-    selected_row.get("Startup Name", ""),
-    selected_row.get("EMAIL", "")
-)
-
-st.markdown(
-    f'<a href="{detail_url}" target="_blank" class="open-link">Open Full Application View</a>',
-    unsafe_allow_html=True
-)
-
-st.markdown("")
-
-tab1, tab2, tab3 = st.tabs(["Application Details", "Review Actions", "Comments & Documents"])
-
-with tab1:
-    st.markdown("#### Entity Details")
-    entity_fields = [
-        "Date", "Startup Name", "Name", "ADDRESS", "EMAIL", "PHONE", "CITY/TOWN", "STATE"
-    ]
-    for field in entity_fields:
-        if field in selected_row and pd.notna(selected_row[field]) and str(selected_row[field]).strip():
-            st.write(f"**{field}:** {selected_row[field]}")
-
-    st.markdown("#### Startup Details")
-    startup_fields = [
-        "BRIEFLY DESCRIBE THE COMPANY AND PRODUCT OFFERED",
-        "DESCRIBE YOUR TEAM AND BACKGROUND",
-        "DESCRIBE THE PROBLEM YOU ARE TRYING TO SOLVE",
-        "WHAT IS UNIQUE ABOUT YOUR SOLUTION",
-        "PLEASE PROVIDE VALUE PROPOSITION PROVIDED FOR THE CUSTOMER SEGMENT",
-        "WHO ARE YOUR COMPETITORS AND WHAT IS YOUR COMPETITVE ADVANTAGE",
-        "PLEASE EXPLAIN YOUR REVENUE MODEL",
-        "WHAT IS THE POTENTIAL MARKET SIZE FOR YOUR PRODUCT",
-        "TYPE OF INCUBATION NEEDED",
-        "WHERE DID YOU HEAR ABOUT AMRITA TBI?",
-        "AT WHAT STAGE IS YOUR STARTUP?",
-        "WHAT IS THE CURRENT TRACTION?",
-        "HOW DOES THE COMPANY MARKET OR PLAN TO MARKET ITS PRODUCTS OR SERVICES?",
-        "KEEP ME UPDATED ABOUT FUTURE ENTREPRENEURSHIP PROGRAMS AND FUNDING OPPORTUNITIES"
-    ]
-    for field in startup_fields:
-        if field in selected_row and pd.notna(selected_row[field]) and str(selected_row[field]).strip():
-            st.write(f"**{field}:**")
-            st.write(selected_row[field])
-            st.write("---")
-
-with tab2:
-    st.markdown("#### Update Review Tracker")
-
-    review_status_options = [
-        "", "To be Reviewed", "Incomplete", "On Hold", "Selected",
-        "Rejected", "System Rejected"
-    ]
-    application_stage_options = [
-        "Submitted", "Under Review", "Closed", "Cancelled"
-    ]
-    cancellation_request_options = [
-        "No Request", "Requested", "Approved"
+if selected_option:
+    selected_match = filtered_df[
+        filtered_df.apply(
+            lambda row: f"{row.get('Startup Name', '')} | {row.get('EMAIL', '')}" == selected_option,
+            axis=1
+        )
     ]
 
-    current_review_status = selected_row.get("Review Status", "")
-    current_stage = selected_row.get("Application Stage", "Submitted")
-    current_cancel = selected_row.get("Cancellation Request", "No Request")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        review_status = st.selectbox(
-            "Review Status",
-            review_status_options,
-            index=review_status_options.index(current_review_status) if current_review_status in review_status_options else 0
-        )
-
-        application_stage = st.selectbox(
-            "Application Stage",
-            application_stage_options,
-            index=application_stage_options.index(current_stage) if current_stage in application_stage_options else 0
-        )
-
-        cancellation_request = st.selectbox(
-            "Cancellation Request",
-            cancellation_request_options,
-            index=cancellation_request_options.index(current_cancel) if current_cancel in cancellation_request_options else 0
-        )
-
-    with col2:
-        reviewer_name = st.text_input(
-            "Reviewer Name",
-            value=selected_row.get("Reviewer Name", "")
-        )
-
-        evaluation_date = st.text_input(
-            "Evaluation Date (YYYY-MM-DD)",
-            value=selected_row.get("Evaluation Date", "")
-        )
-
-        decision_date = st.text_input(
-            "Decision Date (YYYY-MM-DD)",
-            value=selected_row.get("Decision Date", "")
-        )
-
-    reason_for_rejection = st.text_area(
-        "Reason for Rejection",
-        value=selected_row.get("Reason for Rejection", "")
-    )
-
-    reviewer_comments = st.text_area(
-        "Reviewer Comments",
-        value=selected_row.get("Reviewer Comments", "")
-    )
-
-    if st.button("Save Review Update"):
-        startup_name = selected_row.get("Startup Name", "")
-        email = selected_row.get("EMAIL", "")
-
-        upsert_review_row(
-            startup_name=startup_name,
-            email=email,
-            review_status=review_status,
-            application_stage=application_stage,
-            cancellation_request=cancellation_request,
-            reviewer_name=reviewer_name,
-            reviewer_comments=reviewer_comments,
-            evaluation_date=evaluation_date,
-            decision_date=decision_date,
-            reason_for_rejection=reason_for_rejection
-        )
-
-        st.cache_data.clear()
-        st.success("Review Tracker updated successfully.")
+    if not selected_match.empty:
+        selected_row = selected_match.iloc[0]
+        st.experimental_set_query_params(**build_detail_params(
+            selected_row.get("Startup Name", ""),
+            selected_row.get("EMAIL", "")
+        ))
         st.rerun()
-
-with tab3:
-    st.markdown("#### Review Notes")
-    st.write(f"**Reviewer Name:** {selected_row.get('Reviewer Name', '')}")
-    st.write(f"**Reviewer Comments:** {selected_row.get('Reviewer Comments', '')}")
-    st.write(f"**Reason for Rejection:** {selected_row.get('Reason for Rejection', '')}")
-    st.write(f"**Evaluation Date:** {selected_row.get('Evaluation Date', '')}")
-    st.write(f"**Decision Date:** {selected_row.get('Decision Date', '')}")
-
-    st.markdown("#### Document Links")
-    url_fields = [col for col in selected_row if "http" in str(selected_row[col])]
-    if url_fields:
-        for col in url_fields:
-            st.write(f"**{col}:** {selected_row[col]}")
-    else:
-        st.info("No document links found in the current application data.")
