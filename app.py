@@ -1,4 +1,5 @@
 import re
+import hashlib
 import streamlit as st
 import pandas as pd
 import gspread
@@ -32,6 +33,50 @@ TEXT_MUTED = "#6B7280"
 BORDER = "#D8DCE5"
 SOFT_MAROON_BG = "#FBF4F7"
 SECTION_BG = "#FCFCFD"
+
+
+# =========================================================
+# SIMPLE LOCAL LOGIN USERS
+# Replace these with your real usernames/passwords.
+# Passwords below are stored as SHA256 hashes.
+# =========================================================
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+USERS = {
+    "admin": {
+        "password_hash": hash_password("Admin@123"),
+        "role": "admin",
+        "name": "Portal Admin"
+    },
+    "reviewer": {
+        "password_hash": hash_password("Reviewer@123"),
+        "role": "reviewer",
+        "name": "Application Reviewer"
+    },
+    "viewer": {
+        "password_hash": hash_password("Viewer@123"),
+        "role": "viewer",
+        "name": "View Only User"
+    }
+}
+
+
+# =========================================================
+# SESSION DEFAULTS
+# =========================================================
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if "username" not in st.session_state:
+    st.session_state.username = ""
+
+if "role" not in st.session_state:
+    st.session_state.role = ""
+
+if "display_name" not in st.session_state:
+    st.session_state.display_name = ""
 
 
 # =========================================================
@@ -105,6 +150,29 @@ st.markdown(f"""
         margin-bottom: 0.5rem !important;
     }}
 
+    .login-card {{
+        max-width: 480px;
+        margin: 3rem auto 0 auto;
+        background: #FFFFFF;
+        border: 1px solid {BORDER};
+        border-left: 6px solid {AMRITA_MAROON};
+        border-radius: 18px;
+        padding: 28px;
+        box-shadow: 0 10px 30px rgba(17, 24, 39, 0.06);
+    }}
+
+    .login-title {{
+        color: {AMRITA_MAROON};
+        font-size: 1.8rem;
+        font-weight: 800;
+        margin-bottom: 0.4rem;
+    }}
+
+    .login-sub {{
+        color: {TEXT_SECONDARY};
+        margin-bottom: 1.2rem;
+    }}
+
     /* KPI cards */
     div[data-testid="stMetric"] {{
         background: {CARD_BG} !important;
@@ -139,7 +207,6 @@ st.markdown(f"""
         opacity: 1 !important;
     }}
 
-    /* Widget labels */
     .stSelectbox label,
     .stTextInput label,
     .stTextArea label,
@@ -179,6 +246,56 @@ st.markdown(f"""
         opacity: 1 !important;
     }}
 
+    /* -------- FIX FOR BLACK DROPDOWN MENU -------- */
+    div[data-baseweb="popover"] {{
+        background: #FFFFFF !important;
+    }}
+
+    div[data-baseweb="popover"] * {{
+        color: {TEXT_PRIMARY} !important;
+    }}
+
+    ul[role="listbox"] {{
+        background: #FFFFFF !important;
+        color: {TEXT_PRIMARY} !important;
+        border: 1px solid {BORDER} !important;
+        border-radius: 12px !important;
+        box-shadow: 0 10px 28px rgba(17, 24, 39, 0.10) !important;
+    }}
+
+    ul[role="listbox"] li {{
+        background: #FFFFFF !important;
+        color: {TEXT_PRIMARY} !important;
+    }}
+
+    ul[role="listbox"] li:hover {{
+        background: {SOFT_MAROON_BG} !important;
+        color: {TEXT_PRIMARY} !important;
+    }}
+
+    ul[role="listbox"] li[aria-selected="true"] {{
+        background: {SOFT_MAROON_BG} !important;
+        color: {AMRITA_MAROON} !important;
+        font-weight: 700 !important;
+    }}
+
+    div[role="option"] {{
+        background: #FFFFFF !important;
+        color: {TEXT_PRIMARY} !important;
+    }}
+
+    div[role="option"]:hover {{
+        background: {SOFT_MAROON_BG} !important;
+        color: {TEXT_PRIMARY} !important;
+    }}
+
+    div[role="option"][aria-selected="true"] {{
+        background: {SOFT_MAROON_BG} !important;
+        color: {AMRITA_MAROON} !important;
+        font-weight: 700 !important;
+    }}
+    /* -------- END FIX -------- */
+
     .stButton > button {{
         background: {AMRITA_MAROON} !important;
         color: #FFFFFF !important;
@@ -194,7 +311,6 @@ st.markdown(f"""
         color: #FFFFFF !important;
     }}
 
-    /* Tabs */
     .stTabs [data-baseweb="tab-list"] {{
         gap: 10px;
     }}
@@ -221,7 +337,6 @@ st.markdown(f"""
         border-color: {AMRITA_MAROON} !important;
     }}
 
-    /* Dataframe */
     div[data-testid="stDataFrame"] {{
         background: #FFFFFF !important;
         border: 1px solid {BORDER} !important;
@@ -229,7 +344,6 @@ st.markdown(f"""
         overflow: hidden !important;
     }}
 
-    /* Expanders */
     div[data-testid="stExpander"] {{
         border: 1px solid {BORDER} !important;
         border-radius: 16px !important;
@@ -310,6 +424,70 @@ st.markdown(f"""
     }}
 </style>
 """, unsafe_allow_html=True)
+
+
+# =========================================================
+# AUTH HELPERS
+# =========================================================
+def do_login(username: str, password: str):
+    user = USERS.get(username.strip())
+    if not user:
+        return False
+
+    if user["password_hash"] != hash_password(password):
+        return False
+
+    st.session_state.logged_in = True
+    st.session_state.username = username
+    st.session_state.role = user["role"]
+    st.session_state.display_name = user["name"]
+    return True
+
+
+def do_logout():
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+    st.session_state.role = ""
+    st.session_state.display_name = ""
+    st.query_params.clear()
+    st.rerun()
+
+
+def role_in(allowed_roles):
+    return st.session_state.role in allowed_roles
+
+
+def show_login():
+    st.markdown(
+        f"""
+        <div class="login-card">
+            <div class="login-title">Amrita TBI Portal Login</div>
+            <div class="login-sub">Sign in to access incubation applications and review workflows.</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    c1, c2, c3 = st.columns([1.3, 2, 1.3])
+    with c2:
+        username = st.text_input("Username", key="login_username")
+        password = st.text_input("Password", type="password", key="login_password")
+
+        if st.button("Login", use_container_width=True):
+            if do_login(username, password):
+                st.rerun()
+            else:
+                st.error("Invalid username or password.")
+
+        st.info(
+            "Demo roles: admin, reviewer, viewer. "
+            "Change these credentials in the USERS dictionary."
+        )
+    st.stop()
+
+
+if not st.session_state.logged_in:
+    show_login()
 
 
 # =========================================================
@@ -761,6 +939,34 @@ merged_df["Cancellation Request"] = merged_df["Cancellation Request"].replace(""
 
 
 # =========================================================
+# TOP BAR
+# =========================================================
+top_a, top_b = st.columns([5, 2])
+with top_a:
+    st.markdown(f"""
+    <div class="portal-banner">
+        <h1>Amrita TBI - Incubation Portal</h1>
+        <div class="portal-sub">Application review and incubation workflow dashboard.</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with top_b:
+    st.markdown(
+        f"""
+        <div class="section-card" style="min-height:140px;">
+            <div class="kv-label">Logged In User</div>
+            <div class="kv-value">{st.session_state.display_name}</div>
+            <div class="kv-label">Role</div>
+            <div class="kv-value">{st.session_state.role.title()}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    if st.button("Logout"):
+        do_logout()
+
+
+# =========================================================
 # DETAILS PAGE
 # =========================================================
 query_startup = st.query_params.get("startup")
@@ -834,270 +1040,258 @@ if query_startup and query_email:
             render_narrative("Competitive Positioning", profile["startup"]["competitors"])
             render_narrative("Current Traction", profile["startup"]["traction"])
             render_narrative("Go-To-Market / Marketing Plan", profile["startup"]["marketing_plan"])
-
             render_kv_grid([
                 ("Startup Stage", profile["startup"]["startup_stage"]),
                 ("Target Market", profile["startup"]["target_market"]),
-                ("Incubation Required", profile["startup"]["incubation_needed"]),
+                ("Incubation Needed", profile["startup"]["incubation_needed"]),
                 ("Source Channel", profile["startup"]["source_channel"])
             ], columns=2)
 
         with st.expander("➕ Authorised Representative", expanded=False):
             render_kv_grid([
                 ("Representative Name", profile["representative"]["name"]),
-                ("Designation", profile["representative"]["designation"]),
                 ("Email", profile["representative"]["email"]),
-                ("Phone", profile["representative"]["phone"])
+                ("Phone", profile["representative"]["phone"]),
+                ("Designation", profile["representative"]["designation"])
             ], columns=2)
 
         with st.expander("➕ Startup Team", expanded=False):
-            render_narrative("Founder / Team Background", profile["team"]["team_background"])
             render_kv_grid([
                 ("Team Size", profile["team"]["team_size"])
             ], columns=1)
+            render_narrative("Team Background", profile["team"]["team_background"])
 
         with st.expander("➕ Funding Details", expanded=False):
-            render_narrative("Revenue Model", profile["funding"]["revenue_model"])
-            render_narrative("Market Size", profile["funding"]["market_size"])
             render_kv_grid([
                 ("Funds Required", profile["funding"]["funds_required"]),
-                ("Funding Stage", profile["funding"]["funding_stage"])
-            ], columns=2)
-
-        with st.expander("➕ Upload Documents", expanded=False):
-            if profile["documents"]:
-                for doc_label, doc_value in profile["documents"]:
-                    clean_label = doc_label.replace("_", " ").strip()
-                    if doc_value.startswith("http://") or doc_value.startswith("https://"):
-                        st.markdown(f"- **{clean_label}:** [Open Document]({doc_value})")
-                    else:
-                        st.markdown(f"- **{clean_label}:** {doc_value}")
-            else:
-                st.info("No uploaded documents or document links were identified from the sheet data.")
+                ("Funding Stage", profile["funding"]["funding_stage"]),
+                ("Potential Market Size", profile["funding"]["market_size"])
+            ], columns=3)
+            render_narrative("Revenue Model", profile["funding"]["revenue_model"])
 
     with tab2:
-        st.markdown('<div class="section-heading">Review Controls</div>', unsafe_allow_html=True)
+        if not role_in(["admin", "reviewer"]):
+            st.warning("You do not have permission to edit review actions.")
+        else:
+            with st.form("review_form"):
+                current_status = clean_text(selected_row.get("Final Status", "Submitted")) or "Submitted"
+                current_stage = clean_text(selected_row.get("Application Stage", "Submitted")) or "Submitted"
+                current_cancel = clean_text(selected_row.get("Cancellation Request", "No Request")) or "No Request"
 
-        review_status_options = [
-            "", "To be Reviewed", "Incomplete", "On Hold", "Selected",
-            "Rejected", "System Rejected"
-        ]
-        application_stage_options = [
-            "Submitted", "Under Review", "Closed", "Cancelled"
-        ]
-        cancellation_request_options = [
-            "No Request", "Requested", "Approved"
-        ]
+                review_status = st.selectbox(
+                    "Review Status",
+                    [
+                        "Submitted",
+                        "To be Reviewed",
+                        "Incomplete",
+                        "On Hold",
+                        "Selected",
+                        "Rejected",
+                        "Closed",
+                        "Cancelled",
+                        "System Rejected",
+                        "Cancellation Requested"
+                    ],
+                    index=[
+                        "Submitted",
+                        "To be Reviewed",
+                        "Incomplete",
+                        "On Hold",
+                        "Selected",
+                        "Rejected",
+                        "Closed",
+                        "Cancelled",
+                        "System Rejected",
+                        "Cancellation Requested"
+                    ].index(current_status) if current_status in [
+                        "Submitted",
+                        "To be Reviewed",
+                        "Incomplete",
+                        "On Hold",
+                        "Selected",
+                        "Rejected",
+                        "Closed",
+                        "Cancelled",
+                        "System Rejected",
+                        "Cancellation Requested"
+                    ] else 0
+                )
 
-        current_review_status = clean_text(selected_row.get("Review Status", ""))
-        current_stage = clean_text(selected_row.get("Application Stage", "Submitted")) or "Submitted"
-        current_cancel = clean_text(selected_row.get("Cancellation Request", "No Request")) or "No Request"
+                application_stage = st.selectbox(
+                    "Application Stage",
+                    ["Submitted", "Screening", "Review", "Evaluation", "Final Decision", "Closed"],
+                    index=["Submitted", "Screening", "Review", "Evaluation", "Final Decision", "Closed"].index(current_stage)
+                    if current_stage in ["Submitted", "Screening", "Review", "Evaluation", "Final Decision", "Closed"] else 0
+                )
 
-        col1, col2 = st.columns(2)
+                cancellation_request = st.selectbox(
+                    "Cancellation Request",
+                    ["No Request", "Requested", "Approved", "Declined"],
+                    index=["No Request", "Requested", "Approved", "Declined"].index(current_cancel)
+                    if current_cancel in ["No Request", "Requested", "Approved", "Declined"] else 0
+                )
 
-        with col1:
-            review_status = st.selectbox(
-                "Review Status",
-                review_status_options,
-                index=review_status_options.index(current_review_status) if current_review_status in review_status_options else 0
-            )
+                reviewer_name = st.text_input(
+                    "Reviewer Name",
+                    value=clean_text(selected_row.get("Reviewer Name", "")) or st.session_state.display_name
+                )
 
-            application_stage = st.selectbox(
-                "Application Stage",
-                application_stage_options,
-                index=application_stage_options.index(current_stage) if current_stage in application_stage_options else 0
-            )
+                evaluation_date = st.text_input(
+                    "Evaluation Date",
+                    value=clean_text(selected_row.get("Evaluation Date", ""))
+                )
 
-            cancellation_request = st.selectbox(
-                "Cancellation Request",
-                cancellation_request_options,
-                index=cancellation_request_options.index(current_cancel) if current_cancel in cancellation_request_options else 0
-            )
+                decision_date = st.text_input(
+                    "Decision Date",
+                    value=clean_text(selected_row.get("Decision Date", ""))
+                )
 
-        with col2:
-            reviewer_name = st.text_input(
-                "Reviewer Name",
-                value=clean_text(selected_row.get("Reviewer Name", ""))
-            )
+                reason_for_rejection = st.text_area(
+                    "Reason for Rejection",
+                    value=clean_text(selected_row.get("Reason for Rejection", ""))
+                )
 
-            evaluation_date = st.text_input(
-                "Evaluation Date (YYYY-MM-DD)",
-                value=clean_text(selected_row.get("Evaluation Date", ""))
-            )
+                reviewer_comments = st.text_area(
+                    "Reviewer Comments",
+                    value=clean_text(selected_row.get("Reviewer Comments", ""))
+                )
 
-            decision_date = st.text_input(
-                "Decision Date (YYYY-MM-DD)",
-                value=clean_text(selected_row.get("Decision Date", ""))
-            )
+                submitted = st.form_submit_button("Save Review Decision")
 
-        reason_for_rejection = st.text_area(
-            "Reason for Rejection",
-            value=clean_text(selected_row.get("Reason for Rejection", ""))
-        )
-
-        reviewer_comments = st.text_area(
-            "Reviewer Comments",
-            value=clean_text(selected_row.get("Reviewer Comments", ""))
-        )
-
-        if st.button("Save Review Update"):
-            upsert_review_row(
-                startup_name=profile["entity"]["startup_name"],
-                email=profile["representative"]["email"],
-                review_status=review_status,
-                application_stage=application_stage,
-                cancellation_request=cancellation_request,
-                reviewer_name=reviewer_name,
-                reviewer_comments=reviewer_comments,
-                evaluation_date=evaluation_date,
-                decision_date=decision_date,
-                reason_for_rejection=reason_for_rejection
-            )
-
-            st.cache_data.clear()
-            st.success("Review Tracker updated successfully.")
-            st.rerun()
+                if submitted:
+                    upsert_review_row(
+                        startup_name=profile["entity"]["startup_name"],
+                        email=profile["representative"]["email"],
+                        review_status=review_status,
+                        application_stage=application_stage,
+                        cancellation_request=cancellation_request,
+                        reviewer_name=reviewer_name,
+                        reviewer_comments=reviewer_comments,
+                        evaluation_date=evaluation_date,
+                        decision_date=decision_date,
+                        reason_for_rejection=reason_for_rejection
+                    )
+                    st.success("Review details saved successfully.")
+                    st.cache_data.clear()
+                    st.rerun()
 
     with tab3:
-        st.markdown('<div class="section-heading">Internal Review Notes</div>', unsafe_allow_html=True)
-        render_kv_grid([
-            ("Reviewer Name", clean_text(selected_row.get("Reviewer Name", ""))),
-            ("Evaluation Date", clean_text(selected_row.get("Evaluation Date", ""))),
-            ("Decision Date", clean_text(selected_row.get("Decision Date", ""))),
-            ("Current Review Status", clean_text(selected_row.get("Final Status", "")))
-        ], columns=2)
-
-        render_narrative("Reviewer Comments", clean_text(selected_row.get("Reviewer Comments", "")))
-        render_narrative("Reason for Rejection", clean_text(selected_row.get("Reason for Rejection", "")))
+        if clean_text(selected_row.get("Reviewer Comments", "")):
+            render_narrative("Saved Reviewer Comments", selected_row.get("Reviewer Comments", ""))
 
         st.markdown('<div class="section-heading">Documents</div>', unsafe_allow_html=True)
         if profile["documents"]:
-            for doc_label, doc_value in profile["documents"]:
-                clean_label = doc_label.replace("_", " ").strip()
-                if doc_value.startswith("http://") or doc_value.startswith("https://"):
-                    st.markdown(f"- **{clean_label}:** [Open Document]({doc_value})")
-                else:
-                    st.markdown(f"- **{clean_label}:** {doc_value}")
+            for doc_name, doc_link in profile["documents"]:
+                st.markdown(f"- **{doc_name}:** {doc_link}")
         else:
-            st.info("No document links found for this application.")
+            st.info("No document links found in this application.")
 
     st.stop()
-
-
-# =========================================================
-# KPI CALCULATIONS
-# =========================================================
-total_applications = len(merged_df)
-
-kpis = {
-    "Applications Submitted": total_applications,
-    "Applications Selected": int((merged_df["Final Status"] == "Selected").sum()),
-    "To be Reviewed": int((merged_df["Final Status"] == "To be Reviewed").sum()),
-    "Incomplete": int((merged_df["Final Status"] == "Incomplete").sum()),
-    "On Hold": int((merged_df["Final Status"] == "On Hold").sum()),
-    "Rejected": int((merged_df["Final Status"] == "Rejected").sum()),
-    "Closed": int((merged_df["Application Stage"] == "Closed").sum()),
-    "Cancelled": int((merged_df["Application Stage"] == "Cancelled").sum()),
-    "System Rejected": int((merged_df["Final Status"] == "System Rejected").sum()),
-    "Cancellation Requested": int((merged_df["Cancellation Request"] == "Requested").sum())
-}
 
 
 # =========================================================
 # DASHBOARD
 # =========================================================
-st.markdown("""
-<div class="portal-banner">
-    <h1>Amrita TBI - Incubation Portal</h1>
-    <div class="portal-sub">
-        Structured application review dashboard with inferred startup profiles and clear detail views.
-    </div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown("### Application Overview")
 
-st.markdown('<div class="section-heading">Application Overview</div>', unsafe_allow_html=True)
+status_order = [
+    "Submitted",
+    "To be Reviewed",
+    "Incomplete",
+    "On Hold",
+    "Selected",
+    "Rejected",
+    "Closed",
+    "Cancelled",
+    "System Rejected",
+    "Cancellation Requested"
+]
 
-kpi_items = list(kpis.items())
-for start in range(0, len(kpi_items), 5):
+status_counts = merged_df["Final Status"].astype(str).str.strip().value_counts()
+metrics = {"Applications Submitted": len(merged_df)}
+for status in status_order:
+    metrics[status] = int(status_counts.get(status, 0))
+
+metric_items = list(metrics.items())
+for row_start in range(0, len(metric_items), 5):
+    row_items = metric_items[row_start:row_start + 5]
     cols = st.columns(5)
-    chunk = kpi_items[start:start + 5]
-    for i, (label, value) in enumerate(chunk):
+    for i, (label, value) in enumerate(row_items):
         with cols[i]:
             st.metric(label=label, value=value)
 
 st.markdown("---")
-st.markdown('<div class="section-heading">Submitted Applications</div>', unsafe_allow_html=True)
 
-search_term = st.text_input(
-    "Search by startup, founder, email, city, state, stage, industry, or any field",
-    ""
-)
+st.subheader("Submitted Applications")
+
+f1, f2, f3 = st.columns([2.2, 1.3, 1.3])
+with f1:
+    search_term = st.text_input("Search by Startup Name, DIPP Number, Industry, Sector, or Email", "")
+with f2:
+    filter_status = st.selectbox("Filter by Status", ["All"] + status_order)
+with f3:
+    filter_stage = st.selectbox("Filter by Stage", ["All", "Submitted", "Screening", "Review", "Evaluation", "Final Decision", "Closed"])
+
+filtered_df = merged_df.copy()
 
 if search_term:
-    mask = merged_df.apply(
-        lambda row: row.astype(str).str.contains(search_term, case=False, na=False).any(),
-        axis=1
-    )
-    filtered_df = merged_df[mask].copy()
-else:
-    filtered_df = merged_df.copy()
+    mask = filtered_df.apply(lambda row: row.astype(str).str.contains(search_term, case=False, na=False).any(), axis=1)
+    filtered_df = filtered_df[mask].copy()
 
-display_columns = [
-    "Date",
-    "Startup Name",
-    "Name",
-    "EMAIL",
-    "PHONE",
-    "Industry",
-    "Sector",
-    "AT WHAT STAGE IS YOUR STARTUP?",
-    "CITY/TOWN",
-    "STATE",
-    "Final Status",
-    "Application Stage"
-]
+if filter_status != "All":
+    filtered_df = filtered_df[filtered_df["Final Status"].astype(str).str.strip() == filter_status].copy()
 
-for col in display_columns:
+if filter_stage != "All":
+    filtered_df = filtered_df[filtered_df["Application Stage"].astype(str).str.strip() == filter_stage].copy()
+
+if "DIPP Number" not in filtered_df.columns:
+    filtered_df["DIPP Number"] = [f"DIPP-{i+1}" for i in range(len(filtered_df))]
+
+for col in ["Industry", "Sector", "Evaluation Date", "Quantum of Funds Required", "EMAIL"]:
     if col not in filtered_df.columns:
         filtered_df[col] = ""
 
-display_df = filtered_df[display_columns].copy().rename(columns={
-    "Name": "Founder / Contact",
-    "AT WHAT STAGE IS YOUR STARTUP?": "Startup Stage"
+display_df = filtered_df[[
+    "DIPP Number", "Startup Name", "Industry", "Sector",
+    "EMAIL", "Final Status", "Application Stage", "Evaluation Date", "Quantum of Funds Required"
+]].copy()
+
+display_df = display_df.rename(columns={
+    "EMAIL": "Email",
+    "Final Status": "Review Status",
+    "Quantum of Funds Required": "Quantum of Funds"
 })
 
-st.dataframe(display_df, use_container_width=True, height=430)
+st.dataframe(display_df, use_container_width=True)
 
 st.markdown("---")
-st.markdown('<div class="section-heading">Open Application Details</div>', unsafe_allow_html=True)
+st.subheader("Open Application Details")
 
 if filtered_df.empty:
-    st.info("No matching applications found.")
+    st.info("No applications found for the selected filters.")
     st.stop()
 
-startup_options = filtered_df.apply(
-    lambda row: f"{row.get('Startup Name', '')} | {row.get('EMAIL', '')}",
-    axis=1
-).tolist()
-
-selected_option = st.selectbox(
-    "Select a startup to view the full application profile",
-    options=[""] + startup_options
+selected_index = st.selectbox(
+    "Select a startup to view details",
+    filtered_df.index.tolist(),
+    format_func=lambda idx: f"{filtered_df.loc[idx, 'Startup Name']}  |  {filtered_df.loc[idx, 'EMAIL']}"
 )
 
-if selected_option:
-    selected_match = filtered_df[
-        filtered_df.apply(
-            lambda row: f"{row.get('Startup Name', '')} | {row.get('EMAIL', '')}" == selected_option,
-            axis=1
-        )
-    ]
-
-    if not selected_match.empty:
-        selected_row = selected_match.iloc[0]
-        st.query_params.clear()
-        st.query_params.update(build_detail_params(
+if st.button("Open Application"):
+    selected_row = filtered_df.loc[selected_index]
+    st.query_params.update(
+        build_detail_params(
             selected_row.get("Startup Name", ""),
             selected_row.get("EMAIL", "")
-        ))
-        st.rerun()
+        )
+    )
+    st.rerun()
+
+
+# =========================================================
+# ROLE NOTES
+# =========================================================
+with st.expander("Access Roles", expanded=False):
+    st.write("Admin: full access to view and update review actions.")
+    st.write("Reviewer: can view applications and update review actions.")
+    st.write("Viewer: can only view dashboard and application details.")
