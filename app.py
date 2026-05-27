@@ -337,6 +337,10 @@ st.markdown(f"""
         border-color: {AMRITA_MAROON} !important;
     }}
 
+    button[role="tab"][aria-selected="true"] p {{
+        color: #FFFFFF !important;
+    }}
+
     div[data-testid="stDataFrame"] {{
         background: #FFFFFF !important;
         border: 1px solid {BORDER} !important;
@@ -939,268 +943,42 @@ merged_df["Cancellation Request"] = merged_df["Cancellation Request"].replace(""
 
 
 # =========================================================
-# TOP BAR
+# HEADER
 # =========================================================
-top_a, top_b = st.columns([5, 2])
-with top_a:
-    st.markdown(f"""
-    <div class="portal-banner">
-        <h1>Amrita TBI - Incubation Portal</h1>
-        <div class="portal-sub">Application review and incubation workflow dashboard.</div>
-    </div>
-    """, unsafe_allow_html=True)
+left, right = st.columns([5, 1.4])
 
-with top_b:
+with left:
     st.markdown(
         f"""
-        <div class="section-card" style="min-height:140px;">
-            <div class="kv-label">Logged In User</div>
-            <div class="kv-value">{st.session_state.display_name}</div>
-            <div class="kv-label">Role</div>
-            <div class="kv-value">{st.session_state.role.title()}</div>
+        <div class="portal-banner">
+            <h1>Amrita TBI - Incubation Portal</h1>
+            <div class="portal-sub">
+                Review, shortlist, and track startup applications from a single dashboard.
+            </div>
         </div>
         """,
         unsafe_allow_html=True
     )
-    if st.button("Logout"):
+
+with right:
+    st.markdown(f"**User:** {st.session_state.display_name}")
+    st.markdown(f"**Role:** {st.session_state.role.title()}")
+    if st.button("Logout", use_container_width=True):
         do_logout()
 
 
 # =========================================================
-# DETAILS PAGE
+# KPI SECTION
 # =========================================================
-query_startup = st.query_params.get("startup")
-query_email = st.query_params.get("email")
-
-if query_startup and query_email:
-    selected_row = find_application(merged_df, query_startup, query_email)
-
-    if not selected_row:
-        st.error("Application not found.")
-        st.stop()
-
-    profile = infer_application_schema(selected_row)
-
-    if st.button("← Back to Dashboard"):
-        st.query_params.clear()
-        st.rerun()
-
-    st.markdown(f"""
-    <div class="portal-banner">
-        <h1>{profile["entity"]["startup_name"] or "Application Details"}</h1>
-        <div class="portal-sub">
-            Structured startup dossier built from inferred Google Sheet fields.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="section-heading">Application Snapshot</div>', unsafe_allow_html=True)
-
-    top1, top2, top3, top4 = st.columns(4)
-    with top1:
-        st.metric("Review Status", clean_text(selected_row.get("Final Status", "Submitted")) or "Submitted")
-    with top2:
-        st.metric("Application Stage", clean_text(selected_row.get("Application Stage", "Submitted")) or "Submitted")
-    with top3:
-        st.metric("Evaluation Date", clean_text(selected_row.get("Evaluation Date", "")) or "-")
-    with top4:
-        st.metric("Decision Date", clean_text(selected_row.get("Decision Date", "")) or "-")
-
-    st.markdown('<div class="section-heading">At a Glance</div>', unsafe_allow_html=True)
-    render_pills([
-        profile["entity"]["industry"],
-        profile["entity"]["sector"],
-        profile["startup"]["startup_stage"],
-        profile["startup"]["incubation_needed"]
-    ])
-
-    st.markdown("---")
-
-    tab1, tab2, tab3 = st.tabs(["Application Details", "Review Actions", "Comments & Documents"])
-
-    with tab1:
-        with st.expander("➕ Entity Details", expanded=False):
-            render_kv_grid([
-                ("Startup Name", profile["entity"]["startup_name"]),
-                ("Legal Entity", profile["entity"]["legal_entity"]),
-                ("Industry", profile["entity"]["industry"]),
-                ("Sector", profile["entity"]["sector"]),
-                ("DPIIT / DIPP Number", profile["entity"]["dipp_number"]),
-                ("Website / LinkedIn", profile["entity"]["website"]),
-                ("City", profile["entity"]["city"]),
-                ("State", profile["entity"]["state"]),
-                ("Address", profile["entity"]["address"])
-            ], columns=3)
-
-        with st.expander("➕ Startup Details", expanded=False):
-            render_narrative("Company Overview", profile["startup"]["company_overview"])
-            render_narrative("Problem Statement", profile["startup"]["problem_statement"])
-            render_narrative("Solution Edge", profile["startup"]["solution_uniqueness"])
-            render_narrative("Value Proposition", profile["startup"]["value_proposition"])
-            render_narrative("Competitive Positioning", profile["startup"]["competitors"])
-            render_narrative("Current Traction", profile["startup"]["traction"])
-            render_narrative("Go-To-Market / Marketing Plan", profile["startup"]["marketing_plan"])
-            render_kv_grid([
-                ("Startup Stage", profile["startup"]["startup_stage"]),
-                ("Target Market", profile["startup"]["target_market"]),
-                ("Incubation Needed", profile["startup"]["incubation_needed"]),
-                ("Source Channel", profile["startup"]["source_channel"])
-            ], columns=2)
-
-        with st.expander("➕ Authorised Representative", expanded=False):
-            render_kv_grid([
-                ("Representative Name", profile["representative"]["name"]),
-                ("Email", profile["representative"]["email"]),
-                ("Phone", profile["representative"]["phone"]),
-                ("Designation", profile["representative"]["designation"])
-            ], columns=2)
-
-        with st.expander("➕ Startup Team", expanded=False):
-            render_kv_grid([
-                ("Team Size", profile["team"]["team_size"])
-            ], columns=1)
-            render_narrative("Team Background", profile["team"]["team_background"])
-
-        with st.expander("➕ Funding Details", expanded=False):
-            render_kv_grid([
-                ("Funds Required", profile["funding"]["funds_required"]),
-                ("Funding Stage", profile["funding"]["funding_stage"]),
-                ("Potential Market Size", profile["funding"]["market_size"])
-            ], columns=3)
-            render_narrative("Revenue Model", profile["funding"]["revenue_model"])
-
-    with tab2:
-        if not role_in(["admin", "reviewer"]):
-            st.warning("You do not have permission to edit review actions.")
-        else:
-            with st.form("review_form"):
-                current_status = clean_text(selected_row.get("Final Status", "Submitted")) or "Submitted"
-                current_stage = clean_text(selected_row.get("Application Stage", "Submitted")) or "Submitted"
-                current_cancel = clean_text(selected_row.get("Cancellation Request", "No Request")) or "No Request"
-
-                review_status = st.selectbox(
-                    "Review Status",
-                    [
-                        "Submitted",
-                        "To be Reviewed",
-                        "Incomplete",
-                        "On Hold",
-                        "Selected",
-                        "Rejected",
-                        "Closed",
-                        "Cancelled",
-                        "System Rejected",
-                        "Cancellation Requested"
-                    ],
-                    index=[
-                        "Submitted",
-                        "To be Reviewed",
-                        "Incomplete",
-                        "On Hold",
-                        "Selected",
-                        "Rejected",
-                        "Closed",
-                        "Cancelled",
-                        "System Rejected",
-                        "Cancellation Requested"
-                    ].index(current_status) if current_status in [
-                        "Submitted",
-                        "To be Reviewed",
-                        "Incomplete",
-                        "On Hold",
-                        "Selected",
-                        "Rejected",
-                        "Closed",
-                        "Cancelled",
-                        "System Rejected",
-                        "Cancellation Requested"
-                    ] else 0
-                )
-
-                application_stage = st.selectbox(
-                    "Application Stage",
-                    ["Submitted", "Screening", "Review", "Evaluation", "Final Decision", "Closed"],
-                    index=["Submitted", "Screening", "Review", "Evaluation", "Final Decision", "Closed"].index(current_stage)
-                    if current_stage in ["Submitted", "Screening", "Review", "Evaluation", "Final Decision", "Closed"] else 0
-                )
-
-                cancellation_request = st.selectbox(
-                    "Cancellation Request",
-                    ["No Request", "Requested", "Approved", "Declined"],
-                    index=["No Request", "Requested", "Approved", "Declined"].index(current_cancel)
-                    if current_cancel in ["No Request", "Requested", "Approved", "Declined"] else 0
-                )
-
-                reviewer_name = st.text_input(
-                    "Reviewer Name",
-                    value=clean_text(selected_row.get("Reviewer Name", "")) or st.session_state.display_name
-                )
-
-                evaluation_date = st.text_input(
-                    "Evaluation Date",
-                    value=clean_text(selected_row.get("Evaluation Date", ""))
-                )
-
-                decision_date = st.text_input(
-                    "Decision Date",
-                    value=clean_text(selected_row.get("Decision Date", ""))
-                )
-
-                reason_for_rejection = st.text_area(
-                    "Reason for Rejection",
-                    value=clean_text(selected_row.get("Reason for Rejection", ""))
-                )
-
-                reviewer_comments = st.text_area(
-                    "Reviewer Comments",
-                    value=clean_text(selected_row.get("Reviewer Comments", ""))
-                )
-
-                submitted = st.form_submit_button("Save Review Decision")
-
-                if submitted:
-                    upsert_review_row(
-                        startup_name=profile["entity"]["startup_name"],
-                        email=profile["representative"]["email"],
-                        review_status=review_status,
-                        application_stage=application_stage,
-                        cancellation_request=cancellation_request,
-                        reviewer_name=reviewer_name,
-                        reviewer_comments=reviewer_comments,
-                        evaluation_date=evaluation_date,
-                        decision_date=decision_date,
-                        reason_for_rejection=reason_for_rejection
-                    )
-                    st.success("Review details saved successfully.")
-                    st.cache_data.clear()
-                    st.rerun()
-
-    with tab3:
-        if clean_text(selected_row.get("Reviewer Comments", "")):
-            render_narrative("Saved Reviewer Comments", selected_row.get("Reviewer Comments", ""))
-
-        st.markdown('<div class="section-heading">Documents</div>', unsafe_allow_html=True)
-        if profile["documents"]:
-            for doc_name, doc_link in profile["documents"]:
-                st.markdown(f"- **{doc_name}:** {doc_link}")
-        else:
-            st.info("No document links found in this application.")
-
-    st.stop()
-
-
-# =========================================================
-# DASHBOARD
-# =========================================================
-st.markdown("### Application Overview")
+total_applications = len(merged_df)
 
 status_order = [
     "Submitted",
     "To be Reviewed",
     "Incomplete",
-    "On Hold",
     "Selected",
     "Rejected",
+    "On Hold",
     "Closed",
     "Cancelled",
     "System Rejected",
@@ -1208,11 +986,11 @@ status_order = [
 ]
 
 status_counts = merged_df["Final Status"].astype(str).str.strip().value_counts()
-metrics = {"Applications Submitted": len(merged_df)}
+kpi_map = {"Applications Submitted": total_applications}
 for status in status_order:
-    metrics[status] = int(status_counts.get(status, 0))
+    kpi_map[status] = int(status_counts.get(status, 0))
 
-metric_items = list(metrics.items())
+metric_items = list(kpi_map.items())
 for row_start in range(0, len(metric_items), 5):
     row_items = metric_items[row_start:row_start + 5]
     cols = st.columns(5)
@@ -1220,78 +998,296 @@ for row_start in range(0, len(metric_items), 5):
         with cols[i]:
             st.metric(label=label, value=value)
 
+
 st.markdown("---")
 
-st.subheader("Submitted Applications")
 
-f1, f2, f3 = st.columns([2.2, 1.3, 1.3])
+# =========================================================
+# SEARCH / FILTERS
+# =========================================================
+st.markdown('<div class="section-heading">Submitted Applications</div>', unsafe_allow_html=True)
+
+f1, f2, f3 = st.columns([2.2, 1.2, 1.2])
+
 with f1:
-    search_term = st.text_input("Search by Startup Name, DIPP Number, Industry, Sector, or Email", "")
+    search_term = st.text_input(
+        "Search by Startup Name, Email, Industry, Sector, DIPP Number",
+        ""
+    )
+
 with f2:
-    filter_status = st.selectbox("Filter by Status", ["All"] + status_order)
+    selected_status_filter = st.selectbox(
+        "Filter by Final Status",
+        ["All"] + status_order,
+        index=0
+    )
+
 with f3:
-    filter_stage = st.selectbox("Filter by Stage", ["All", "Submitted", "Screening", "Review", "Evaluation", "Final Decision", "Closed"])
+    stage_filter = st.selectbox(
+        "Filter by Application Stage",
+        ["All", "Submitted", "Screening", "Under Review", "Selected", "Rejected", "Closed"],
+        index=0
+    )
 
 filtered_df = merged_df.copy()
 
 if search_term:
-    mask = filtered_df.apply(lambda row: row.astype(str).str.contains(search_term, case=False, na=False).any(), axis=1)
-    filtered_df = filtered_df[mask].copy()
+    mask = filtered_df.apply(
+        lambda row: row.astype(str).str.contains(search_term, case=False, na=False).any(),
+        axis=1
+    )
+    filtered_df = filtered_df[mask]
 
-if filter_status != "All":
-    filtered_df = filtered_df[filtered_df["Final Status"].astype(str).str.strip() == filter_status].copy()
+if selected_status_filter != "All":
+    filtered_df = filtered_df[
+        filtered_df["Final Status"].astype(str).str.strip() == selected_status_filter
+    ]
 
-if filter_stage != "All":
-    filtered_df = filtered_df[filtered_df["Application Stage"].astype(str).str.strip() == filter_stage].copy()
+if stage_filter != "All":
+    filtered_df = filtered_df[
+        filtered_df["Application Stage"].astype(str).str.strip() == stage_filter
+    ]
+
+if filtered_df.empty:
+    st.info("No applications matched your search or filters.")
+    st.stop()
+
 
 if "DIPP Number" not in filtered_df.columns:
     filtered_df["DIPP Number"] = [f"DIPP-{i+1}" for i in range(len(filtered_df))]
 
-for col in ["Industry", "Sector", "Evaluation Date", "Quantum of Funds Required", "EMAIL"]:
+for col in ["Industry", "Sector", "Evaluation Date", "Quantum of Funds Required"]:
     if col not in filtered_df.columns:
         filtered_df[col] = ""
 
 display_df = filtered_df[[
-    "DIPP Number", "Startup Name", "Industry", "Sector",
-    "EMAIL", "Final Status", "Application Stage", "Evaluation Date", "Quantum of Funds Required"
+    "DIPP Number",
+    "Startup Name",
+    "EMAIL",
+    "Industry",
+    "Sector",
+    "Evaluation Date",
+    "Quantum of Funds Required",
+    "Final Status",
+    "Application Stage"
 ]].copy()
 
 display_df = display_df.rename(columns={
-    "EMAIL": "Email",
-    "Final Status": "Review Status",
     "Quantum of Funds Required": "Quantum of Funds"
 })
 
-st.dataframe(display_df, use_container_width=True)
+st.dataframe(display_df, use_container_width=True, hide_index=True)
 
+
+# =========================================================
+# APPLICATION SELECTOR
+# =========================================================
 st.markdown("---")
-st.subheader("Open Application Details")
+st.markdown('<div class="section-heading">Startup Details</div>', unsafe_allow_html=True)
 
-if filtered_df.empty:
-    st.info("No applications found for the selected filters.")
-    st.stop()
+filtered_df = filtered_df.reset_index(drop=True)
 
 selected_index = st.selectbox(
     "Select a startup to view details",
-    filtered_df.index.tolist(),
-    format_func=lambda idx: f"{filtered_df.loc[idx, 'Startup Name']}  |  {filtered_df.loc[idx, 'EMAIL']}"
+    filtered_df.index,
+    format_func=lambda idx: (
+        f"{clean_text(filtered_df.loc[idx, 'Startup Name'])} "
+        f"({clean_text(filtered_df.loc[idx, 'Final Status'])})"
+    )
 )
 
-if st.button("Open Application"):
-    selected_row = filtered_df.loc[selected_index]
-    st.query_params.update(
-        build_detail_params(
-            selected_row.get("Startup Name", ""),
-            selected_row.get("EMAIL", "")
-        )
+selected_row = filtered_df.loc[selected_index].to_dict()
+structured = infer_application_schema(selected_row)
+
+startup_name = clean_text(selected_row.get("Startup Name", ""))
+email = clean_text(selected_row.get("EMAIL", ""))
+current_final_status = clean_text(selected_row.get("Final Status", "Submitted"))
+current_stage = clean_text(selected_row.get("Application Stage", "Submitted"))
+current_cancel_request = clean_text(selected_row.get("Cancellation Request", "No Request"))
+current_comments = clean_text(selected_row.get("Reviewer Comments", ""))
+current_eval_date = clean_text(selected_row.get("Evaluation Date", ""))
+current_decision_date = clean_text(selected_row.get("Decision Date", ""))
+current_reason = clean_text(selected_row.get("Reason for Rejection", ""))
+
+st.markdown(f"### Selected Application: {startup_name}")
+render_pills([
+    f"Final Status: {current_final_status}",
+    f"Application Stage: {current_stage}",
+    f"Cancellation: {current_cancel_request}"
+])
+
+tab1, tab2, tab3 = st.tabs([
+    "📋 Application Details (Summary)",
+    "📁 Documents",
+    "💬 Review & Comments"
+])
+
+with tab1:
+    st.markdown('<div class="field-heading">Entity Details</div>', unsafe_allow_html=True)
+    render_kv_grid([
+        ("Startup Name", structured["entity"]["startup_name"]),
+        ("Legal Entity", structured["entity"]["legal_entity"]),
+        ("Industry", structured["entity"]["industry"]),
+        ("Sector", structured["entity"]["sector"]),
+        ("DIPP Number", structured["entity"]["dipp_number"]),
+        ("Website / LinkedIn", structured["entity"]["website"]),
+        ("City", structured["entity"]["city"]),
+        ("State", structured["entity"]["state"]),
+        ("Address", structured["entity"]["address"])
+    ], columns=3)
+
+    st.markdown('<div class="field-heading">Authorised Representative</div>', unsafe_allow_html=True)
+    render_kv_grid([
+        ("Name", structured["representative"]["name"]),
+        ("Email", structured["representative"]["email"]),
+        ("Phone", structured["representative"]["phone"]),
+        ("Designation", structured["representative"]["designation"])
+    ], columns=2)
+
+    st.markdown('<div class="field-heading">Startup Summary</div>', unsafe_allow_html=True)
+    render_narrative("Company and Product Offered", structured["startup"]["company_overview"])
+    render_narrative("Problem Statement", structured["startup"]["problem_statement"])
+    render_narrative("Unique Value / Differentiation", structured["startup"]["solution_uniqueness"])
+    render_narrative("Value Proposition", structured["startup"]["value_proposition"])
+    render_narrative("Competitors and Competitive Advantage", structured["startup"]["competitors"])
+    render_narrative("Current Traction", structured["startup"]["traction"])
+    render_narrative("Marketing Plan", structured["startup"]["marketing_plan"])
+
+    st.markdown('<div class="field-heading">Startup Profile</div>', unsafe_allow_html=True)
+    render_kv_grid([
+        ("Startup Stage", structured["startup"]["startup_stage"]),
+        ("Incubation Needed", structured["startup"]["incubation_needed"]),
+        ("Source Channel", structured["startup"]["source_channel"]),
+        ("Target Market", structured["startup"]["target_market"])
+    ], columns=2)
+
+    st.markdown('<div class="field-heading">Team & Funding</div>', unsafe_allow_html=True)
+    render_narrative("Team and Background", structured["team"]["team_background"])
+    render_kv_grid([
+        ("Team Size", structured["team"]["team_size"]),
+        ("Revenue Model", structured["funding"]["revenue_model"]),
+        ("Market Size", structured["funding"]["market_size"]),
+        ("Funds Required", structured["funding"]["funds_required"]),
+        ("Funding Stage", structured["funding"]["funding_stage"])
+    ], columns=2)
+
+with tab2:
+    if structured["documents"]:
+        for doc_label, doc_value in structured["documents"]:
+            if doc_value.startswith("http://") or doc_value.startswith("https://"):
+                st.markdown(f"**{doc_label}:** [Open Document]({doc_value})")
+            else:
+                st.write(f"**{doc_label}:** {doc_value}")
+    else:
+        st.info("No document links or upload fields were found for this application.")
+
+with tab3:
+    st.info("Review details are saved to the Review Tracker sheet.")
+
+    can_edit = role_in(["admin", "reviewer"])
+
+    review_status = st.selectbox(
+        "Review Status",
+        [
+            "Submitted",
+            "To be Reviewed",
+            "Incomplete",
+            "Selected",
+            "Rejected",
+            "On Hold",
+            "Closed",
+            "Cancelled",
+            "System Rejected",
+            "Cancellation Requested"
+        ],
+        index=[
+            "Submitted",
+            "To be Reviewed",
+            "Incomplete",
+            "Selected",
+            "Rejected",
+            "On Hold",
+            "Closed",
+            "Cancelled",
+            "System Rejected",
+            "Cancellation Requested"
+        ].index(current_final_status if current_final_status in [
+            "Submitted",
+            "To be Reviewed",
+            "Incomplete",
+            "Selected",
+            "Rejected",
+            "On Hold",
+            "Closed",
+            "Cancelled",
+            "System Rejected",
+            "Cancellation Requested"
+        ] else "Submitted"),
+        disabled=not can_edit
     )
-    st.rerun()
 
+    application_stage = st.selectbox(
+        "Application Stage",
+        ["Submitted", "Screening", "Under Review", "Selected", "Rejected", "Closed"],
+        index=["Submitted", "Screening", "Under Review", "Selected", "Rejected", "Closed"].index(
+            current_stage if current_stage in ["Submitted", "Screening", "Under Review", "Selected", "Rejected", "Closed"] else "Submitted"
+        ),
+        disabled=not can_edit
+    )
 
-# =========================================================
-# ROLE NOTES
-# =========================================================
-with st.expander("Access Roles", expanded=False):
-    st.write("Admin: full access to view and update review actions.")
-    st.write("Reviewer: can view applications and update review actions.")
-    st.write("Viewer: can only view dashboard and application details.")
+    cancellation_request = st.selectbox(
+        "Cancellation Request",
+        ["No Request", "Cancellation Requested"],
+        index=["No Request", "Cancellation Requested"].index(
+            current_cancel_request if current_cancel_request in ["No Request", "Cancellation Requested"] else "No Request"
+        ),
+        disabled=not can_edit
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        evaluation_date = st.text_input(
+            "Evaluation Date",
+            value=current_eval_date,
+            disabled=not can_edit
+        )
+    with col2:
+        decision_date = st.text_input(
+            "Decision Date",
+            value=current_decision_date,
+            disabled=not can_edit
+        )
+
+    reviewer_comments = st.text_area(
+        "Reviewer Comments",
+        value=current_comments,
+        height=140,
+        disabled=not can_edit
+    )
+
+    reason_for_rejection = st.text_area(
+        "Reason for Rejection",
+        value=current_reason,
+        height=120,
+        disabled=not can_edit
+    )
+
+    if can_edit:
+        if st.button("Save Review", use_container_width=True):
+            upsert_review_row(
+                startup_name=startup_name,
+                email=email,
+                review_status=review_status,
+                application_stage=application_stage,
+                cancellation_request=cancellation_request,
+                reviewer_name=st.session_state.display_name,
+                reviewer_comments=reviewer_comments,
+                evaluation_date=evaluation_date,
+                decision_date=decision_date,
+                reason_for_rejection=reason_for_rejection
+            )
+            st.cache_data.clear()
+            st.success("Review details saved successfully.")
+            st.rerun()
+    else:
+        st.warning("You have view-only access. Review fields cannot be edited.")
