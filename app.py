@@ -29,6 +29,7 @@ TEXT_PRIMARY = "#111827"
 TEXT_SECONDARY = "#374151"
 TEXT_MUTED = "#6B7280"
 BORDER = "#D6DAE1"
+SOFT_MAROON_BG = "#FBF5F7"
 
 
 # =========================================================
@@ -63,7 +64,7 @@ st.markdown(f"""
     }}
 
     .portal-banner {{
-        background: linear-gradient(135deg, #FFFFFF 0%, #FBF5F7 100%);
+        background: linear-gradient(135deg, #FFFFFF 0%, {SOFT_MAROON_BG} 100%);
         border: 1px solid {BORDER};
         border-left: 6px solid {AMRITA_MAROON};
         border-radius: 20px;
@@ -133,6 +134,10 @@ st.markdown(f"""
         color: #FFFFFF !important;
     }}
 
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 10px;
+    }}
+
     button[role="tab"] {{
         background: #FFFFFF !important;
         color: {TEXT_SECONDARY} !important;
@@ -168,6 +173,37 @@ st.markdown(f"""
         padding: 18px;
         box-shadow: 0 6px 18px rgba(17, 24, 39, 0.04);
         margin-bottom: 1rem;
+    }}
+
+    div[data-testid="stExpander"] {{
+        border: 1px solid {BORDER} !important;
+        border-radius: 14px !important;
+        background: #FFFFFF !important;
+        margin-bottom: 10px !important;
+        overflow: hidden !important;
+        box-shadow: 0 4px 12px rgba(17, 24, 39, 0.04) !important;
+    }}
+
+    div[data-testid="stExpander"] details {{
+        border: none !important;
+    }}
+
+    div[data-testid="stExpander"] details summary {{
+        background: {SOFT_MAROON_BG} !important;
+        border-radius: 14px !important;
+        font-weight: 700 !important;
+        padding-top: 0.2rem !important;
+        padding-bottom: 0.2rem !important;
+    }}
+
+    div[data-testid="stExpander"] details summary:hover {{
+        background: #F7E9EE !important;
+    }}
+
+    div[data-testid="stExpander"] details summary p {{
+        color: {AMRITA_MAROON} !important;
+        font-size: 1rem !important;
+        font-weight: 700 !important;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -347,6 +383,36 @@ def find_application(df, startup_name, email):
     return match.iloc[0].to_dict()
 
 
+def safe_value(row_dict, key, default=""):
+    value = row_dict.get(key, default)
+    if pd.isna(value):
+        return default
+    return str(value).strip()
+
+
+def render_field(label, value):
+    if str(value).strip():
+        st.markdown(f"**{label}:** {value}")
+
+
+def render_multiline_field(label, value):
+    if str(value).strip():
+        st.markdown(f"**{label}**")
+        st.write(value)
+        st.markdown("")
+
+
+def collect_document_fields(row_dict):
+    doc_fields = []
+    for key, value in row_dict.items():
+        val = str(value).strip()
+        if not val:
+            continue
+        if "upload" in key.lower() or "document" in key.lower() or "http" in val.lower():
+            doc_fields.append((key, val))
+    return doc_fields
+
+
 # =========================================================
 # LOAD DATA
 # =========================================================
@@ -364,16 +430,15 @@ if not review_df.empty:
 if applications_df.empty:
     applications_df = pd.DataFrame(columns=["Startup Name", "EMAIL"])
 
+if "Startup Name" not in applications_df.columns:
+    applications_df["Startup Name"] = ""
+if "EMAIL" not in applications_df.columns:
+    applications_df["EMAIL"] = ""
+
 applications_df["Inferred Status"] = applications_df.apply(infer_status_from_form, axis=1)
 
-applications_df["merge_startup"] = (
-    applications_df["Startup Name"].astype(str).str.strip().str.lower()
-    if "Startup Name" in applications_df.columns else ""
-)
-applications_df["merge_email"] = (
-    applications_df["EMAIL"].astype(str).str.strip().str.lower()
-    if "EMAIL" in applications_df.columns else ""
-)
+applications_df["merge_startup"] = applications_df["Startup Name"].astype(str).str.strip().str.lower()
+applications_df["merge_email"] = applications_df["EMAIL"].astype(str).str.strip().str.lower()
 
 if not review_df.empty:
     for col in [
@@ -437,61 +502,125 @@ if query_startup and query_email:
 
     st.markdown(f"""
     <div class="portal-banner">
-        <h1 style="margin:0;">{selected_row.get('Startup Name', 'Application Details')}</h1>
-        <div class="portal-sub">Application details and review actions</div>
+        <h1 style="margin:0;">{safe_value(selected_row, 'Startup Name', 'Application Details')}</h1>
+        <div class="portal-sub">Structured application details and review actions</div>
     </div>
     """, unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write(f"**Founder / Contact:** {selected_row.get('Name', '')}")
-        st.write(f"**Email:** {selected_row.get('EMAIL', '')}")
-        st.write(f"**Phone:** {selected_row.get('PHONE', '')}")
-        st.write(f"**City / Town:** {selected_row.get('CITY/TOWN', '')}")
-        st.write(f"**State:** {selected_row.get('STATE', '')}")
-
-    with col2:
-        st.write(f"**Current Review Status:** {selected_row.get('Final Status', '')}")
-        st.write(f"**Application Stage:** {selected_row.get('Application Stage', '')}")
-        st.write(f"**Evaluation Date:** {selected_row.get('Evaluation Date', '')}")
-        st.write(f"**Decision Date:** {selected_row.get('Decision Date', '')}")
-        st.write(f"**Cancellation Request:** {selected_row.get('Cancellation Request', '')}")
+    top1, top2, top3, top4 = st.columns(4)
+    with top1:
+        st.metric("Review Status", safe_value(selected_row, "Final Status", "Submitted"))
+    with top2:
+        st.metric("Application Stage", safe_value(selected_row, "Application Stage", "Submitted"))
+    with top3:
+        st.metric("Evaluation Date", safe_value(selected_row, "Evaluation Date", "-"))
+    with top4:
+        st.metric("Decision Date", safe_value(selected_row, "Decision Date", "-"))
 
     st.markdown("---")
 
     tab1, tab2, tab3 = st.tabs(["Application Details", "Review Actions", "Comments & Documents"])
 
     with tab1:
-        detail_fields = [
-            "Date",
-            "Startup Name",
-            "Name",
-            "ADDRESS",
-            "EMAIL",
-            "PHONE",
-            "BRIEFLY DESCRIBE THE COMPANY AND PRODUCT OFFERED",
-            "DESCRIBE YOUR TEAM AND BACKGROUND",
-            "DESCRIBE THE PROBLEM YOU ARE TRYING TO SOLVE",
-            "WHAT IS UNIQUE ABOUT YOUR SOLUTION",
-            "PLEASE PROVIDE VALUE PROPOSITION PROVIDED FOR THE CUSTOMER SEGMENT",
-            "WHO ARE YOUR COMPETITORS AND WHAT IS YOUR COMPETITVE ADVANTAGE",
-            "PLEASE EXPLAIN YOUR REVENUE MODEL",
-            "WHAT IS THE POTENTIAL MARKET SIZE FOR YOUR PRODUCT",
-            "TYPE OF INCUBATION NEEDED",
-            "WHERE DID YOU HEAR ABOUT AMRITA TBI?",
-            "AT WHAT STAGE IS YOUR STARTUP?",
-            "WHAT IS THE CURRENT TRACTION?",
-            "HOW DOES THE COMPANY MARKET OR PLAN TO MARKET ITS PRODUCTS OR SERVICES?",
-            "CITY/TOWN",
-            "STATE",
-            "KEEP ME UPDATED ABOUT FUTURE ENTREPRENEURSHIP PROGRAMS AND FUNDING OPPORTUNITIES"
-        ]
+        st.markdown("### Structured Application View")
 
-        for field in detail_fields:
-            value = selected_row.get(field, "")
-            if pd.notna(value) and str(value).strip():
-                st.markdown(f"### {field}")
-                st.write(value)
+        with st.expander("➕ Entity Details", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                render_field("Startup Name", safe_value(selected_row, "Startup Name"))
+                render_field("Entity / Founder Name", safe_value(selected_row, "Name"))
+                render_field("Email", safe_value(selected_row, "EMAIL"))
+            with col2:
+                render_field("Phone", safe_value(selected_row, "PHONE"))
+                render_field("Address", safe_value(selected_row, "ADDRESS"))
+                render_field("City / Town", safe_value(selected_row, "CITY/TOWN"))
+                render_field("State", safe_value(selected_row, "STATE"))
+
+        with st.expander("➕ Startup Details", expanded=False):
+            render_multiline_field(
+                "Briefly describe the company and product offered",
+                safe_value(selected_row, "BRIEFLY DESCRIBE THE COMPANY AND PRODUCT OFFERED")
+            )
+            render_multiline_field(
+                "Describe the problem you are trying to solve",
+                safe_value(selected_row, "DESCRIBE THE PROBLEM YOU ARE TRYING TO SOLVE")
+            )
+            render_multiline_field(
+                "What is unique about your solution",
+                safe_value(selected_row, "WHAT IS UNIQUE ABOUT YOUR SOLUTION")
+            )
+            render_multiline_field(
+                "Value proposition for the customer segment",
+                safe_value(selected_row, "PLEASE PROVIDE VALUE PROPOSITION PROVIDED FOR THE CUSTOMER SEGMENT")
+            )
+            render_multiline_field(
+                "Competitors and competitive advantage",
+                safe_value(selected_row, "WHO ARE YOUR COMPETITORS AND WHAT IS YOUR COMPETITVE ADVANTAGE")
+            )
+            render_field(
+                "Type of incubation needed",
+                safe_value(selected_row, "TYPE OF INCUBATION NEEDED")
+            )
+            render_field(
+                "Where did you hear about Amrita TBI?",
+                safe_value(selected_row, "WHERE DID YOU HEAR ABOUT AMRITA TBI?")
+            )
+            render_field(
+                "Current startup stage",
+                safe_value(selected_row, "AT WHAT STAGE IS YOUR STARTUP?")
+            )
+            render_multiline_field(
+                "Current traction",
+                safe_value(selected_row, "WHAT IS THE CURRENT TRACTION?")
+            )
+            render_multiline_field(
+                "Marketing approach / plan",
+                safe_value(selected_row, "HOW DOES THE COMPANY MARKET OR PLAN TO MARKET ITS PRODUCTS OR SERVICES?")
+            )
+            render_field(
+                "Keep updated for future opportunities",
+                safe_value(selected_row, "KEEP ME UPDATED ABOUT FUTURE ENTREPRENEURSHIP PROGRAMS AND FUNDING OPPORTUNITIES")
+            )
+
+        with st.expander("➕ Authorised Representative", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                render_field("Representative Name", safe_value(selected_row, "Name"))
+                render_field("Email", safe_value(selected_row, "EMAIL"))
+            with col2:
+                render_field("Phone", safe_value(selected_row, "PHONE"))
+                render_field("Address", safe_value(selected_row, "ADDRESS"))
+
+        with st.expander("➕ Startup Team", expanded=False):
+            render_multiline_field(
+                "Describe your team and background",
+                safe_value(selected_row, "DESCRIBE YOUR TEAM AND BACKGROUND")
+            )
+
+        with st.expander("➕ Funding Details", expanded=False):
+            render_multiline_field(
+                "Revenue model",
+                safe_value(selected_row, "PLEASE EXPLAIN YOUR REVENUE MODEL")
+            )
+            render_multiline_field(
+                "Potential market size",
+                safe_value(selected_row, "WHAT IS THE POTENTIAL MARKET SIZE FOR YOUR PRODUCT")
+            )
+            render_field(
+                "Quantum of funds required",
+                safe_value(selected_row, "Quantum of Funds Required")
+            )
+
+        with st.expander("➕ Upload Documents", expanded=False):
+            document_rows = collect_document_fields(selected_row)
+            if document_rows:
+                for doc_label, doc_value in document_rows:
+                    if doc_value.startswith("http://") or doc_value.startswith("https://"):
+                        st.markdown(f"**{doc_label}:** [Open Document]({doc_value})")
+                    else:
+                        st.write(f"**{doc_label}:** {doc_value}")
+            else:
+                st.info("No uploaded document fields found in the application.")
 
     with tab2:
         review_status_options = [
@@ -505,9 +634,9 @@ if query_startup and query_email:
             "No Request", "Requested", "Approved"
         ]
 
-        current_review_status = selected_row.get("Review Status", "")
-        current_stage = selected_row.get("Application Stage", "Submitted")
-        current_cancel = selected_row.get("Cancellation Request", "No Request")
+        current_review_status = safe_value(selected_row, "Review Status")
+        current_stage = safe_value(selected_row, "Application Stage", "Submitted")
+        current_cancel = safe_value(selected_row, "Cancellation Request", "No Request")
 
         col1, col2 = st.columns(2)
 
@@ -533,32 +662,32 @@ if query_startup and query_email:
         with col2:
             reviewer_name = st.text_input(
                 "Reviewer Name",
-                value=selected_row.get("Reviewer Name", "")
+                value=safe_value(selected_row, "Reviewer Name")
             )
 
             evaluation_date = st.text_input(
                 "Evaluation Date (YYYY-MM-DD)",
-                value=selected_row.get("Evaluation Date", "")
+                value=safe_value(selected_row, "Evaluation Date")
             )
 
             decision_date = st.text_input(
                 "Decision Date (YYYY-MM-DD)",
-                value=selected_row.get("Decision Date", "")
+                value=safe_value(selected_row, "Decision Date")
             )
 
         reason_for_rejection = st.text_area(
             "Reason for Rejection",
-            value=selected_row.get("Reason for Rejection", "")
+            value=safe_value(selected_row, "Reason for Rejection")
         )
 
         reviewer_comments = st.text_area(
             "Reviewer Comments",
-            value=selected_row.get("Reviewer Comments", "")
+            value=safe_value(selected_row, "Reviewer Comments")
         )
 
         if st.button("Save Review Update"):
-            startup_name = selected_row.get("Startup Name", "")
-            email = selected_row.get("EMAIL", "")
+            startup_name = safe_value(selected_row, "Startup Name")
+            email = safe_value(selected_row, "EMAIL")
 
             upsert_review_row(
                 startup_name=startup_name,
@@ -578,17 +707,21 @@ if query_startup and query_email:
             st.rerun()
 
     with tab3:
-        st.write(f"**Reviewer Name:** {selected_row.get('Reviewer Name', '')}")
-        st.write(f"**Reviewer Comments:** {selected_row.get('Reviewer Comments', '')}")
-        st.write(f"**Reason for Rejection:** {selected_row.get('Reason for Rejection', '')}")
-        st.write(f"**Evaluation Date:** {selected_row.get('Evaluation Date', '')}")
-        st.write(f"**Decision Date:** {selected_row.get('Decision Date', '')}")
+        st.markdown("### Reviewer Notes")
+        st.write(f"**Reviewer Name:** {safe_value(selected_row, 'Reviewer Name')}")
+        st.write(f"**Reviewer Comments:** {safe_value(selected_row, 'Reviewer Comments')}")
+        st.write(f"**Reason for Rejection:** {safe_value(selected_row, 'Reason for Rejection')}")
+        st.write(f"**Evaluation Date:** {safe_value(selected_row, 'Evaluation Date')}")
+        st.write(f"**Decision Date:** {safe_value(selected_row, 'Decision Date')}")
 
-        st.markdown("#### Document Links")
-        url_fields = [col for col in selected_row if "http" in str(selected_row[col])]
-        if url_fields:
-            for col in url_fields:
-                st.write(f"**{col}:** {selected_row[col]}")
+        st.markdown("### Application Documents")
+        document_rows = collect_document_fields(selected_row)
+        if document_rows:
+            for doc_label, doc_value in document_rows:
+                if doc_value.startswith("http://") or doc_value.startswith("https://"):
+                    st.markdown(f"**{doc_label}:** [Open Document]({doc_value})")
+                else:
+                    st.write(f"**{doc_label}:** {doc_value}")
         else:
             st.info("No document links found in the current application data.")
 
@@ -620,7 +753,7 @@ kpis = {
 st.markdown("""
 <div class="portal-banner">
     <h1 style="margin:0;">Amrita TBI - Incubation Portal</h1>
-    <div class="portal-sub">Application dashboard with direct navigation to the startup details page.</div>
+    <div class="portal-sub">Application dashboard with direct navigation to a structured startup details page.</div>
 </div>
 """, unsafe_allow_html=True)
 
