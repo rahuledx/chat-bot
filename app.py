@@ -31,7 +31,6 @@ TEXT_SECONDARY = "#374151"
 TEXT_MUTED = "#6B7280"
 BORDER = "#D8DCE5"
 SOFT_MAROON_BG = "#FBF4F7"
-SUCCESS_BG = "#EEF8F1"
 SECTION_BG = "#FCFCFD"
 
 
@@ -56,10 +55,14 @@ st.markdown(f"""
         padding-bottom: 2rem;
     }}
 
-    h1, h2, h3, h4 {{
+    h1, h2, h3, h4, h5, h6 {{
         color: {AMRITA_MAROON} !important;
-        font-weight: 700 !important;
+        font-weight: 800 !important;
         letter-spacing: -0.02em;
+    }}
+
+    p, span, label, div {{
+        color: {TEXT_PRIMARY};
     }}
 
     .portal-banner {{
@@ -72,31 +75,93 @@ st.markdown(f"""
         box-shadow: 0 8px 24px rgba(17, 24, 39, 0.05);
     }}
 
+    .portal-banner h1 {{
+        color: {AMRITA_MAROON} !important;
+        font-size: 2rem !important;
+        font-weight: 800 !important;
+        margin-bottom: 6px !important;
+    }}
+
     .portal-sub {{
         color: {TEXT_SECONDARY} !important;
         margin-top: 8px;
-        font-size: 0.98rem;
+        font-size: 1rem;
+        font-weight: 500;
     }}
 
+    .section-heading {{
+        color: {AMRITA_MAROON} !important;
+        font-size: 1.35rem !important;
+        font-weight: 800 !important;
+        margin-top: 1rem !important;
+        margin-bottom: 0.8rem !important;
+    }}
+
+    .field-heading {{
+        color: {TEXT_PRIMARY} !important;
+        font-size: 1.02rem !important;
+        font-weight: 700 !important;
+        margin-top: 0.4rem !important;
+        margin-bottom: 0.5rem !important;
+    }}
+
+    /* KPI cards */
     div[data-testid="stMetric"] {{
         background: {CARD_BG} !important;
         border: 1px solid {BORDER} !important;
-        border-top: 4px solid {AMRITA_MAROON} !important;
+        border-top: 5px solid {AMRITA_MAROON} !important;
         border-radius: 16px !important;
-        padding: 16px !important;
-        box-shadow: 0 6px 18px rgba(17, 24, 39, 0.04) !important;
+        padding: 18px 16px !important;
+        box-shadow: 0 6px 18px rgba(17, 24, 39, 0.05) !important;
     }}
 
-    div[data-testid="stMetricLabel"] * {{
+    [data-testid="stMetricLabel"] {{
+        margin-bottom: 6px !important;
+    }}
+
+    [data-testid="stMetricLabel"] p {{
         color: {TEXT_SECONDARY} !important;
-        font-weight: 600 !important;
-        font-size: 0.92rem !important;
+        font-weight: 800 !important;
+        font-size: 0.95rem !important;
+        line-height: 1.3 !important;
+        opacity: 1 !important;
     }}
 
-    div[data-testid="stMetricValue"] * {{
+    [data-testid="stMetricValue"] {{
+        margin-top: 2px !important;
+    }}
+
+    [data-testid="stMetricValue"] div {{
+        color: {AMRITA_MAROON} !important;
+        font-weight: 900 !important;
+        font-size: 2rem !important;
+        line-height: 1.1 !important;
+        opacity: 1 !important;
+    }}
+
+    /* Widget labels */
+    .stSelectbox label,
+    .stTextInput label,
+    .stTextArea label,
+    .stDateInput label {{
         color: {TEXT_PRIMARY} !important;
         font-weight: 800 !important;
-        font-size: 1.8rem !important;
+        font-size: 1rem !important;
+        opacity: 1 !important;
+    }}
+
+    .stSelectbox label p,
+    .stTextInput label p,
+    .stTextArea label p,
+    .stDateInput label p {{
+        color: {TEXT_PRIMARY} !important;
+        font-weight: 800 !important;
+        font-size: 1rem !important;
+        opacity: 1 !important;
+    }}
+
+    .stMarkdown, .stMarkdown p {{
+        color: {TEXT_PRIMARY} !important;
     }}
 
     .stTextInput input,
@@ -109,13 +174,18 @@ st.markdown(f"""
         border-radius: 12px !important;
     }}
 
+    .stSelectbox div[data-baseweb="select"] * {{
+        color: {TEXT_PRIMARY} !important;
+        opacity: 1 !important;
+    }}
+
     .stButton > button {{
         background: {AMRITA_MAROON} !important;
         color: #FFFFFF !important;
         border: 1px solid {AMRITA_MAROON} !important;
         border-radius: 12px !important;
-        font-weight: 700 !important;
-        padding: 0.6rem 1rem !important;
+        font-weight: 800 !important;
+        padding: 0.65rem 1rem !important;
     }}
 
     .stButton > button:hover {{
@@ -124,6 +194,7 @@ st.markdown(f"""
         color: #FFFFFF !important;
     }}
 
+    /* Tabs */
     .stTabs [data-baseweb="tab-list"] {{
         gap: 10px;
     }}
@@ -134,7 +205,14 @@ st.markdown(f"""
         border: 1px solid {BORDER} !important;
         border-radius: 12px !important;
         padding: 10px 14px !important;
-        font-weight: 600 !important;
+        font-weight: 800 !important;
+        opacity: 1 !important;
+    }}
+
+    button[role="tab"] p {{
+        color: inherit !important;
+        font-weight: 800 !important;
+        opacity: 1 !important;
     }}
 
     button[role="tab"][aria-selected="true"] {{
@@ -143,6 +221,7 @@ st.markdown(f"""
         border-color: {AMRITA_MAROON} !important;
     }}
 
+    /* Dataframe */
     div[data-testid="stDataFrame"] {{
         background: #FFFFFF !important;
         border: 1px solid {BORDER} !important;
@@ -150,6 +229,7 @@ st.markdown(f"""
         overflow: hidden !important;
     }}
 
+    /* Expanders */
     div[data-testid="stExpander"] {{
         border: 1px solid {BORDER} !important;
         border-radius: 16px !important;
@@ -162,14 +242,15 @@ st.markdown(f"""
     div[data-testid="stExpander"] details summary {{
         background: {SOFT_MAROON_BG} !important;
         border-radius: 16px !important;
-        padding-top: 0.15rem !important;
-        padding-bottom: 0.15rem !important;
+        padding-top: 0.2rem !important;
+        padding-bottom: 0.2rem !important;
     }}
 
     div[data-testid="stExpander"] details summary p {{
         color: {AMRITA_MAROON} !important;
-        font-size: 1rem !important;
-        font-weight: 700 !important;
+        font-size: 1.02rem !important;
+        font-weight: 900 !important;
+        opacity: 1 !important;
     }}
 
     .section-card {{
@@ -178,22 +259,26 @@ st.markdown(f"""
         border-radius: 16px;
         padding: 18px;
         margin-bottom: 12px;
+        min-height: 108px;
     }}
 
     .kv-label {{
-        color: {TEXT_MUTED};
+        color: {TEXT_MUTED} !important;
         font-size: 0.83rem;
-        font-weight: 600;
+        font-weight: 800;
         text-transform: uppercase;
         letter-spacing: 0.04em;
         margin-bottom: 4px;
+        opacity: 1 !important;
     }}
 
     .kv-value {{
-        color: {TEXT_PRIMARY};
+        color: {TEXT_PRIMARY} !important;
         font-size: 1rem;
-        font-weight: 600;
-        margin-bottom: 14px;
+        font-weight: 700;
+        margin-bottom: 10px;
+        opacity: 1 !important;
+        word-break: break-word;
     }}
 
     .narrative-box {{
@@ -209,12 +294,13 @@ st.markdown(f"""
         padding: 6px 10px;
         border-radius: 999px;
         font-size: 0.84rem;
-        font-weight: 700;
+        font-weight: 800;
         margin-right: 8px;
         margin-bottom: 8px;
         background: {SOFT_MAROON_BG};
         color: {AMRITA_MAROON};
         border: 1px solid #F0D7E0;
+        opacity: 1 !important;
     }}
 
     hr {{
@@ -385,17 +471,6 @@ def find_matching_value(row_dict, patterns):
     return ""
 
 
-def find_all_matching_values(row_dict, patterns):
-    found = []
-    for key, value in row_dict.items():
-        key_slug = slug(key)
-        for pattern in patterns:
-            if pattern in key_slug and clean_text(value):
-                found.append((key, clean_text(value)))
-                break
-    return found
-
-
 def infer_application_schema(row_dict):
     structured = {
         "entity": {
@@ -433,7 +508,7 @@ def infer_application_schema(row_dict):
         "startup": {
             "company_overview": first_non_empty([
                 row_dict.get("BRIEFLY DESCRIBE THE COMPANY AND PRODUCT OFFERED", ""),
-                find_matching_value(row_dict, ["briefly describe the company and product offered", "company and product", "company overview", "product offered"])
+                find_matching_value(row_dict, ["company and product", "company overview", "product offered"])
             ]),
             "problem_statement": first_non_empty([
                 row_dict.get("DESCRIBE THE PROBLEM YOU ARE TRYING TO SOLVE", ""),
@@ -461,7 +536,7 @@ def infer_application_schema(row_dict):
             ]),
             "startup_stage": first_non_empty([
                 row_dict.get("AT WHAT STAGE IS YOUR STARTUP?", ""),
-                find_matching_value(row_dict, ["stage is your startup", "startup stage", "company stage"])
+                find_matching_value(row_dict, ["startup stage", "stage is your startup", "company stage"])
             ]),
             "marketing_plan": first_non_empty([
                 row_dict.get("HOW DOES THE COMPANY MARKET OR PLAN TO MARKET ITS PRODUCTS OR SERVICES?", ""),
@@ -479,7 +554,7 @@ def infer_application_schema(row_dict):
         "representative": {
             "name": first_non_empty([
                 row_dict.get("Name", ""),
-                find_matching_value(row_dict, ["authorised representative", "authorized representative", "founder name", "contact person", "full name", "name"])
+                find_matching_value(row_dict, ["authorized representative", "authorised representative", "founder name", "contact person", "full name", "name"])
             ]),
             "email": first_non_empty([
                 row_dict.get("EMAIL", ""),
@@ -505,11 +580,11 @@ def infer_application_schema(row_dict):
             ]),
             "market_size": first_non_empty([
                 row_dict.get("WHAT IS THE POTENTIAL MARKET SIZE FOR YOUR PRODUCT", ""),
-                find_matching_value(row_dict, ["potential market size", "market size", "tam", "sam", "som"])
+                find_matching_value(row_dict, ["market size", "potential market size", "tam", "sam", "som"])
             ]),
             "funds_required": first_non_empty([
                 row_dict.get("Quantum of Funds Required", ""),
-                find_matching_value(row_dict, ["quantum of funds required", "funds required", "investment sought", "capital required"])
+                find_matching_value(row_dict, ["funds required", "investment sought", "capital required", "quantum of funds required"])
             ]),
             "funding_stage": find_matching_value(row_dict, ["funding stage", "round", "raising stage"])
         }
@@ -527,8 +602,8 @@ def infer_application_schema(row_dict):
             or val.startswith("https://")
         ):
             docs.append((key, val))
-
     structured["documents"] = docs
+
     return structured
 
 
@@ -599,7 +674,9 @@ def render_narrative(title, value):
             f"""
             <div class="narrative-box">
                 <div class="kv-label">{title}</div>
-                <div style="color:{TEXT_PRIMARY}; line-height:1.75;">{clean_text(value)}</div>
+                <div style="color:{TEXT_PRIMARY}; line-height:1.75; font-weight:500;">
+                    {clean_text(value)}
+                </div>
             </div>
             """,
             unsafe_allow_html=True
@@ -704,12 +781,14 @@ if query_startup and query_email:
 
     st.markdown(f"""
     <div class="portal-banner">
-        <h1 style="margin:0;">{profile["entity"]["startup_name"] or "Application Details"}</h1>
+        <h1>{profile["entity"]["startup_name"] or "Application Details"}</h1>
         <div class="portal-sub">
-            Structured startup dossier for review, built from inferred Google Sheet fields.
+            Structured startup dossier built from inferred Google Sheet fields.
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    st.markdown('<div class="section-heading">Application Snapshot</div>', unsafe_allow_html=True)
 
     top1, top2, top3, top4 = st.columns(4)
     with top1:
@@ -721,7 +800,7 @@ if query_startup and query_email:
     with top4:
         st.metric("Decision Date", clean_text(selected_row.get("Decision Date", "")) or "-")
 
-    st.markdown("### At a Glance")
+    st.markdown('<div class="section-heading">At a Glance</div>', unsafe_allow_html=True)
     render_pills([
         profile["entity"]["industry"],
         profile["entity"]["sector"],
@@ -734,7 +813,7 @@ if query_startup and query_email:
     tab1, tab2, tab3 = st.tabs(["Application Details", "Review Actions", "Comments & Documents"])
 
     with tab1:
-        with st.expander("➕ Entity Details", expanded=True):
+        with st.expander("➕ Entity Details", expanded=False):
             render_kv_grid([
                 ("Startup Name", profile["entity"]["startup_name"]),
                 ("Legal Entity", profile["entity"]["legal_entity"]),
@@ -747,7 +826,7 @@ if query_startup and query_email:
                 ("Address", profile["entity"]["address"])
             ], columns=3)
 
-        with st.expander("➕ Startup Details", expanded=True):
+        with st.expander("➕ Startup Details", expanded=False):
             render_narrative("Company Overview", profile["startup"]["company_overview"])
             render_narrative("Problem Statement", profile["startup"]["problem_statement"])
             render_narrative("Solution Edge", profile["startup"]["solution_uniqueness"])
@@ -763,7 +842,7 @@ if query_startup and query_email:
                 ("Source Channel", profile["startup"]["source_channel"])
             ], columns=2)
 
-        with st.expander("➕ Authorised Representative", expanded=True):
+        with st.expander("➕ Authorised Representative", expanded=False):
             render_kv_grid([
                 ("Representative Name", profile["representative"]["name"]),
                 ("Designation", profile["representative"]["designation"]),
@@ -771,13 +850,13 @@ if query_startup and query_email:
                 ("Phone", profile["representative"]["phone"])
             ], columns=2)
 
-        with st.expander("➕ Startup Team", expanded=True):
+        with st.expander("➕ Startup Team", expanded=False):
             render_narrative("Founder / Team Background", profile["team"]["team_background"])
             render_kv_grid([
                 ("Team Size", profile["team"]["team_size"])
             ], columns=1)
 
-        with st.expander("➕ Funding Details", expanded=True):
+        with st.expander("➕ Funding Details", expanded=False):
             render_narrative("Revenue Model", profile["funding"]["revenue_model"])
             render_narrative("Market Size", profile["funding"]["market_size"])
             render_kv_grid([
@@ -785,7 +864,7 @@ if query_startup and query_email:
                 ("Funding Stage", profile["funding"]["funding_stage"])
             ], columns=2)
 
-        with st.expander("➕ Upload Documents", expanded=True):
+        with st.expander("➕ Upload Documents", expanded=False):
             if profile["documents"]:
                 for doc_label, doc_value in profile["documents"]:
                     clean_label = doc_label.replace("_", " ").strip()
@@ -797,6 +876,8 @@ if query_startup and query_email:
                 st.info("No uploaded documents or document links were identified from the sheet data.")
 
     with tab2:
+        st.markdown('<div class="section-heading">Review Controls</div>', unsafe_allow_html=True)
+
         review_status_options = [
             "", "To be Reviewed", "Incomplete", "On Hold", "Selected",
             "Rejected", "System Rejected"
@@ -878,7 +959,7 @@ if query_startup and query_email:
             st.rerun()
 
     with tab3:
-        st.markdown("### Internal Review Notes")
+        st.markdown('<div class="section-heading">Internal Review Notes</div>', unsafe_allow_html=True)
         render_kv_grid([
             ("Reviewer Name", clean_text(selected_row.get("Reviewer Name", ""))),
             ("Evaluation Date", clean_text(selected_row.get("Evaluation Date", ""))),
@@ -889,7 +970,7 @@ if query_startup and query_email:
         render_narrative("Reviewer Comments", clean_text(selected_row.get("Reviewer Comments", "")))
         render_narrative("Reason for Rejection", clean_text(selected_row.get("Reason for Rejection", "")))
 
-        st.markdown("### Documents")
+        st.markdown('<div class="section-heading">Documents</div>', unsafe_allow_html=True)
         if profile["documents"]:
             for doc_label, doc_value in profile["documents"]:
                 clean_label = doc_label.replace("_", " ").strip()
@@ -927,14 +1008,14 @@ kpis = {
 # =========================================================
 st.markdown("""
 <div class="portal-banner">
-    <h1 style="margin:0;">Amrita TBI - Incubation Portal</h1>
+    <h1>Amrita TBI - Incubation Portal</h1>
     <div class="portal-sub">
-        Structured application review dashboard with inferred startup profiles and clean detail views.
+        Structured application review dashboard with inferred startup profiles and clear detail views.
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("### Application Overview")
+st.markdown('<div class="section-heading">Application Overview</div>', unsafe_allow_html=True)
 
 kpi_items = list(kpis.items())
 for start in range(0, len(kpi_items), 5):
@@ -945,7 +1026,7 @@ for start in range(0, len(kpi_items), 5):
             st.metric(label=label, value=value)
 
 st.markdown("---")
-st.subheader("Submitted Applications")
+st.markdown('<div class="section-heading">Submitted Applications</div>', unsafe_allow_html=True)
 
 search_term = st.text_input(
     "Search by startup, founder, email, city, state, stage, industry, or any field",
@@ -988,6 +1069,7 @@ display_df = filtered_df[display_columns].copy().rename(columns={
 st.dataframe(display_df, use_container_width=True, height=430)
 
 st.markdown("---")
+st.markdown('<div class="section-heading">Open Application Details</div>', unsafe_allow_html=True)
 
 if filtered_df.empty:
     st.info("No matching applications found.")
@@ -999,7 +1081,7 @@ startup_options = filtered_df.apply(
 ).tolist()
 
 selected_option = st.selectbox(
-    "Select a startup to open the structured details page",
+    "Select a startup to view the full application profile",
     options=[""] + startup_options
 )
 
