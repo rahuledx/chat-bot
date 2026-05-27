@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from urllib.parse import urlencode
 
 
 # =========================================================
@@ -132,6 +131,21 @@ st.markdown(f"""
         background: {AMRITA_MAROON_DARK} !important;
         border-color: {AMRITA_MAROON_DARK} !important;
         color: #FFFFFF !important;
+    }}
+
+    button[role="tab"] {{
+        background: #FFFFFF !important;
+        color: {TEXT_SECONDARY} !important;
+        border: 1px solid {BORDER} !important;
+        border-radius: 12px !important;
+        padding: 10px 14px !important;
+        font-weight: 600 !important;
+    }}
+
+    button[role="tab"][aria-selected="true"] {{
+        background: {AMRITA_MAROON} !important;
+        color: #FFFFFF !important;
+        border-color: {AMRITA_MAROON} !important;
     }}
 
     div[data-testid="stDataFrame"] {{
@@ -407,9 +421,8 @@ merged_df["Cancellation Request"] = merged_df["Cancellation Request"].replace(""
 # =========================================================
 # DETAILS PAGE
 # =========================================================
-params = st.experimental_get_query_params()
-query_startup = params.get("startup", [None])[0]
-query_email = params.get("email", [None])[0]
+query_startup = st.query_params.get("startup")
+query_email = st.query_params.get("email")
 
 if query_startup and query_email:
     selected_row = find_application(merged_df, query_startup, query_email)
@@ -419,7 +432,7 @@ if query_startup and query_email:
         st.stop()
 
     if st.button("← Back to Dashboard"):
-        st.experimental_set_query_params()
+        st.query_params.clear()
         st.rerun()
 
     st.markdown(f"""
@@ -689,7 +702,8 @@ if selected_option:
 
     if not selected_match.empty:
         selected_row = selected_match.iloc[0]
-        st.experimental_set_query_params(**build_detail_params(
+        st.query_params.clear()
+        st.query_params.update(build_detail_params(
             selected_row.get("Startup Name", ""),
             selected_row.get("EMAIL", "")
         ))
