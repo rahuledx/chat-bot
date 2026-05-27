@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from urllib.parse import urlencode
 
 
 # =========================================================
@@ -167,6 +168,23 @@ st.markdown(f"""
         border-radius: 18px;
         padding: 18px;
         box-shadow: 0 6px 18px rgba(17, 24, 39, 0.04);
+        margin-bottom: 1rem;
+    }}
+
+    .open-link {{
+        display: inline-block;
+        background: #A4123F;
+        color: white !important;
+        text-decoration: none;
+        padding: 10px 16px;
+        border-radius: 12px;
+        font-weight: 700;
+        margin-top: 10px;
+    }}
+
+    .open-link:hover {{
+        background: #7D1030;
+        color: white !important;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -182,11 +200,15 @@ def get_gsheet_client():
         "https://www.googleapis.com/auth/drive"
     ]
 
+    private_key = st.secrets["gcp_service_account"]["private_key"]
+    if "\\n" in private_key:
+        private_key = private_key.replace("\\n", "\n")
+
     creds_dict = {
         "type": st.secrets["gcp_service_account"]["type"],
         "project_id": st.secrets["gcp_service_account"]["project_id"],
         "private_key_id": st.secrets["gcp_service_account"]["private_key_id"],
-        "private_key": st.secrets["gcp_service_account"]["private_key"],
+        "private_key": private_key,
         "client_email": st.secrets["gcp_service_account"]["client_email"],
         "client_id": st.secrets["gcp_service_account"]["client_id"],
         "auth_uri": st.secrets["gcp_service_account"]["auth_uri"],
@@ -321,6 +343,28 @@ def upsert_review_row(
         ws.append_row(new_row)
 
 
+def build_detail_url(startup_name, email):
+    params = urlencode({
+        "startup": str(startup_name).strip(),
+        "email": str(email).strip()
+    })
+    return f"?{params}"
+
+
+def find_application(df, startup_name, email):
+    startup_key = normalize_key(startup_name)
+    email_key = normalize_key(email)
+
+    match = df[
+        (df["Startup Name"].astype(str).str.strip().str.lower() == startup_key) &
+        (df["EMAIL"].astype(str).str.strip().str.lower() == email_key)
+    ]
+
+    if match.empty:
+        return None
+    return match.iloc[0].to_dict()
+
+
 # =========================================================
 # LOAD DATA
 # =========================================================
@@ -393,6 +437,86 @@ merged_df["Cancellation Request"] = merged_df["Cancellation Request"].replace(""
 
 
 # =========================================================
+# FULL PAGE DETAIL VIEW
+# =========================================================
+query_startup = st.query_params.get("startup")
+query_email = st.query_params.get("email")
+
+if query_startup and query_email:
+    selected_row = find_application(merged_df, query_startup, query_email)
+
+    if not selected_row:
+        st.error("Application not found.")
+        st.stop()
+
+    st.markdown(f"""
+    <div class="portal-banner">
+        <h1 style="margin:0;">{selected_row.get('Startup Name', 'Application Details')}</h1>
+        <div class="portal-sub">Full application details view</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(f"**Founder / Contact:** {selected_row.get('Name', '')}")
+        st.write(f"**Email:** {selected_row.get('EMAIL', '')}")
+        st.write(f"**Phone:** {selected_row.get('PHONE', '')}")
+        st.write(f"**City / Town:** {selected_row.get('CITY/TOWN', '')}")
+        st.write(f"**State:** {selected_row.get('STATE', '')}")
+
+    with col2:
+        st.write(f"**Current Review Status:** {selected_row.get('Final Status', '')}")
+        st.write(f"**Application Stage:** {selected_row.get('Application Stage', '')}")
+        st.write(f"**Evaluation Date:** {selected_row.get('Evaluation Date', '')}")
+        st.write(f"**Decision Date:** {selected_row.get('Decision Date', '')}")
+        st.write(f"**Cancellation Request:** {selected_row.get('Cancellation Request', '')}")
+
+    st.markdown("---")
+
+    detail_fields = [
+        "Date",
+        "Startup Name",
+        "Name",
+        "ADDRESS",
+        "EMAIL",
+        "PHONE",
+        "BRIEFLY DESCRIBE THE COMPANY AND PRODUCT OFFERED",
+        "DESCRIBE YOUR TEAM AND BACKGROUND",
+        "DESCRIBE THE PROBLEM YOU ARE TRYING TO SOLVE",
+        "WHAT IS UNIQUE ABOUT YOUR SOLUTION",
+        "PLEASE PROVIDE VALUE PROPOSITION PROVIDED FOR THE CUSTOMER SEGMENT",
+        "WHO ARE YOUR COMPETITORS AND WHAT IS YOUR COMPETITVE ADVANTAGE",
+        "PLEASE EXPLAIN YOUR REVENUE MODEL",
+        "WHAT IS THE POTENTIAL MARKET SIZE FOR YOUR PRODUCT",
+        "TYPE OF INCUBATION NEEDED",
+        "WHERE DID YOU HEAR ABOUT AMRITA TBI?",
+        "AT WHAT STAGE IS YOUR STARTUP?",
+        "WHAT IS THE CURRENT TRACTION?",
+        "HOW DOES THE COMPANY MARKET OR PLAN TO MARKET ITS PRODUCTS OR SERVICES?",
+        "CITY/TOWN",
+        "STATE",
+        "KEEP ME UPDATED ABOUT FUTURE ENTREPRENEURSHIP PROGRAMS AND FUNDING OPPORTUNITIES",
+        "Reviewer Name",
+        "Reviewer Comments",
+        "Reason for Rejection"
+    ]
+
+    for field in detail_fields:
+        value = selected_row.get(field, "")
+        if pd.notna(value) and str(value).strip():
+            st.markdown(f"### {field}")
+            st.write(value)
+
+    url_fields = [col for col in selected_row if "http" in str(selected_row[col])]
+    if url_fields:
+        st.markdown("### Document Links")
+        for col in url_fields:
+            st.write(f"**{col}:** {selected_row[col]}")
+
+    st.stop()
+
+
+# =========================================================
 # KPI CALCULATIONS
 # =========================================================
 total_applications = len(merged_df)
@@ -417,7 +541,7 @@ kpis = {
 st.markdown("""
 <div class="portal-banner">
     <h1 style="margin:0;">Amrita TBI - Incubation Portal</h1>
-    <div class="portal-sub">Application dashboard with review workflow, KPI tracking, and web deployment support.</div>
+    <div class="portal-sub">Application dashboard with review workflow, KPI tracking, and full-page detail view.</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -502,9 +626,19 @@ st.markdown(f"""
     <h3 style="margin-top:0;">Selected Application: {selected_row.get('Startup Name', 'N/A')}</h3>
     <p><strong>Current Review Status:</strong> {selected_row.get('Final Status', 'Submitted')}</p>
     <p><strong>Application Stage:</strong> {selected_row.get('Application Stage', 'Submitted')}</p>
-    <p style="margin-bottom:0;"><strong>Contact:</strong> {selected_row.get('Name', 'N/A')} | {selected_row.get('EMAIL', 'N/A')} | {selected_row.get('PHONE', 'N/A')}</p>
+    <p><strong>Contact:</strong> {selected_row.get('Name', 'N/A')} | {selected_row.get('EMAIL', 'N/A')} | {selected_row.get('PHONE', 'N/A')}</p>
 </div>
 """, unsafe_allow_html=True)
+
+detail_url = build_detail_url(
+    selected_row.get("Startup Name", ""),
+    selected_row.get("EMAIL", "")
+)
+
+st.markdown(
+    f'<a href="{detail_url}" target="_blank" class="open-link">Open Full Application View</a>',
+    unsafe_allow_html=True
+)
 
 st.markdown("")
 
