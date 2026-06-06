@@ -23,6 +23,11 @@ SPREADSHEET_NAME = "(Responses)"
 APPLICATION_SHEET = "Sheet1"
 REVIEW_SHEET = "Review Tracker"
 
+# NEW: configuration for an additional portal's sheet
+# Add these to your Streamlit secrets; leave empty to disable
+EXTRA_SPREADSHEET_NAME = st.secrets.get("extra_spreadsheet_name", "")
+EXTRA_SHEET_NAME = st.secrets.get("extra_sheet_name", "")
+
 AMRITA_MAROON = "#A4123F"
 AMRITA_MAROON_DARK = "#7D1030"
 PAGE_BG = "#F6F7FB"
@@ -80,7 +85,7 @@ if "display_name" not in st.session_state:
 
 
 # =========================================================
-# CSS
+# CSS (unchanged)
 # =========================================================
 st.markdown(f"""
 <style>
@@ -427,7 +432,7 @@ st.markdown(f"""
 
 
 # =========================================================
-# AUTH HELPERS
+# AUTH HELPERS (unchanged)
 # =========================================================
 def do_login(username: str, password: str):
     user = USERS.get(username.strip())
@@ -522,15 +527,17 @@ def get_gsheet_client():
     return gspread.authorize(creds)
 
 
-def get_worksheet(sheet_name):
+def get_spreadsheet_worksheet(spreadsheet_name, sheet_name):
+    """Return a worksheet object for any spreadsheet + sheet."""
     client = get_gsheet_client()
-    sheet = client.open(SPREADSHEET_NAME)
+    sheet = client.open(spreadsheet_name)
     return sheet.worksheet(sheet_name)
 
 
 @st.cache_data(ttl=60)
-def load_sheet_data(sheet_name):
-    ws = get_worksheet(sheet_name)
+def load_sheet_data(spreadsheet_name, sheet_name):
+    """Load data from a given spreadsheet and sheet as a DataFrame."""
+    ws = get_spreadsheet_worksheet(spreadsheet_name, sheet_name)
     values = ws.get_all_values()
     if not values:
         return pd.DataFrame()
@@ -544,7 +551,7 @@ def normalize_key(value):
 
 
 def ensure_review_tracker_columns():
-    ws = get_worksheet(REVIEW_SHEET)
+    ws = get_spreadsheet_worksheet(SPREADSHEET_NAME, REVIEW_SHEET)
     values = ws.get_all_values()
 
     expected_headers = [
@@ -581,7 +588,7 @@ def upsert_review_row(
     decision_date,
     reason_for_rejection
 ):
-    ws = get_worksheet(REVIEW_SHEET)
+    ws = get_spreadsheet_worksheet(SPREADSHEET_NAME, REVIEW_SHEET)
     values = ws.get_all_values()
 
     headers = values[0]
@@ -617,7 +624,7 @@ def upsert_review_row(
 
 
 # =========================================================
-# HELPERS
+# HELPERS (unchanged)
 # =========================================================
 def clean_text(value):
     if value is None:
@@ -869,12 +876,46 @@ def render_pills(values):
 
 
 # =========================================================
-# LOAD DATA
+# LOAD DATA (with extra sheet integration)
 # =========================================================
 ensure_review_tracker_columns()
 
-applications_df = load_sheet_data(APPLICATION_SHEET)
-review_df = load_sheet_data(REVIEW_SHEET)
+# Load main applications
+applications_df = load_sheet_data(SPREADSHEET_NAME, APPLICATION_SHEET)
+review_df = load_sheet_data(SPREADSHEET_NAME, REVIEW_SHEET)
+
+# ------------------------------------------------------------------
+# NEW: Load and merge extra portal sheet (if configured)
+# ------------------------------------------------------------------
+if EXTRA_SPREADSHEET_NAME and EXTRA_SHEET_NAME:
+    try:
+        extra_df = load_sheet_data(EXTRA_SPREADSHEET_NAME, EXTRA_SHEET_NAME)
+        if not extra_df.empty:
+            # Align columns with the main application sheet
+            main_cols = list(applications_df.columns)
+            extra_cols = list(extra_df.columns)
+
+            # Keep only columns that exist in the main sheet
+            common_cols = [c for c in extra_cols if c in main_cols]
+            extra_df_aligned = extra_df[common_cols].copy()
+
+            # Add missing main columns as empty strings
+            for col in main_cols:
+                if col not in extra_df_aligned.columns:
+                    extra_df_aligned[col] = ""
+
+            # Reorder to match main sheet column order
+            extra_df_aligned = extra_df_aligned[main_cols]
+
+            # Concatenate and remove exact duplicates (same Startup Name + EMAIL)
+            applications_df = pd.concat([applications_df, extra_df_aligned], ignore_index=True)
+            applications_df.drop_duplicates(subset=["Startup Name", "EMAIL"], keep="first", inplace=True)
+
+            st.toast(f"Merged {len(extra_df)} applications from extra portal.", icon="✅")
+    except Exception as e:
+        st.warning(f"Could not load extra portal sheet: {e}")
+
+# ------------------------------------------------------------------
 
 if not applications_df.empty:
     applications_df.columns = applications_df.columns.str.strip()
@@ -939,7 +980,7 @@ merged_df["Cancellation Request"] = merged_df["Cancellation Request"].replace(""
 
 
 # =========================================================
-# TOP BAR
+# TOP BAR (unchanged)
 # =========================================================
 top_a, top_b = st.columns([5, 2])
 with top_a:
@@ -967,7 +1008,7 @@ with top_b:
 
 
 # =========================================================
-# DETAILS PAGE
+# DETAILS PAGE (unchanged)
 # =========================================================
 query_startup = st.query_params.get("startup")
 query_email = st.query_params.get("email")
@@ -1190,7 +1231,7 @@ if query_startup and query_email:
 
 
 # =========================================================
-# DASHBOARD
+# DASHBOARD (unchanged)
 # =========================================================
 st.markdown("### Application Overview")
 
@@ -1289,7 +1330,7 @@ if st.button("Open Application"):
 
 
 # =========================================================
-# ROLE NOTES
+# ROLE NOTES (unchanged)
 # =========================================================
 with st.expander("Access Roles", expanded=False):
     st.write("Admin: full access to view and update review actions.")
