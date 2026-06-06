@@ -24,8 +24,8 @@ APPLICATION_SHEET = "Sheet1"
 REVIEW_SHEET = "Review Tracker"
 
 # Optional extra portal sheet (leave empty to disable)
-EXTRA_SPREADSHEET_NAME = st.secrets.get("My Other Portal Sheet", "")
-EXTRA_SHEET_NAME = st.secrets.get("Sheet1", "")
+EXTRA_SPREADSHEET_NAME = st.secrets.get("extra_spreadsheet_name", "")
+EXTRA_SHEET_NAME = st.secrets.get("extra_sheet_name", "")
 
 AMRITA_MAROON = "#A4123F"
 AMRITA_MAROON_DARK = "#7D1030"
