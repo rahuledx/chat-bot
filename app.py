@@ -23,8 +23,7 @@ SPREADSHEET_NAME = "(Responses)"
 APPLICATION_SHEET = "Sheet1"
 REVIEW_SHEET = "Review Tracker"
 
-# NEW: configuration for an additional portal's sheet
-# Add these to your Streamlit secrets; leave empty to disable
+# Optional extra portal sheet (leave empty to disable)
 EXTRA_SPREADSHEET_NAME = st.secrets.get("extra_spreadsheet_name", "")
 EXTRA_SHEET_NAME = st.secrets.get("extra_sheet_name", "")
 
@@ -432,7 +431,7 @@ st.markdown(f"""
 
 
 # =========================================================
-# AUTH HELPERS (unchanged)
+# AUTH HELPERS
 # =========================================================
 def do_login(username: str, password: str):
     user = USERS.get(username.strip())
@@ -624,7 +623,7 @@ def upsert_review_row(
 
 
 # =========================================================
-# HELPERS (unchanged)
+# HELPERS
 # =========================================================
 def clean_text(value):
     if value is None:
@@ -876,46 +875,34 @@ def render_pills(values):
 
 
 # =========================================================
-# LOAD DATA (with extra sheet integration)
+# LOAD DATA (with source tagging and extra sheet merge)
 # =========================================================
 ensure_review_tracker_columns()
 
 # Load main applications
 applications_df = load_sheet_data(SPREADSHEET_NAME, APPLICATION_SHEET)
+applications_df["Source"] = "Main Portal"          # Tag source
 review_df = load_sheet_data(SPREADSHEET_NAME, REVIEW_SHEET)
 
-# ------------------------------------------------------------------
-# NEW: Load and merge extra portal sheet (if configured)
-# ------------------------------------------------------------------
+# Load and merge extra portal sheet (if configured)
 if EXTRA_SPREADSHEET_NAME and EXTRA_SHEET_NAME:
     try:
         extra_df = load_sheet_data(EXTRA_SPREADSHEET_NAME, EXTRA_SHEET_NAME)
         if not extra_df.empty:
-            # Align columns with the main application sheet
             main_cols = list(applications_df.columns)
             extra_cols = list(extra_df.columns)
-
-            # Keep only columns that exist in the main sheet
             common_cols = [c for c in extra_cols if c in main_cols]
             extra_df_aligned = extra_df[common_cols].copy()
-
-            # Add missing main columns as empty strings
             for col in main_cols:
                 if col not in extra_df_aligned.columns:
                     extra_df_aligned[col] = ""
-
-            # Reorder to match main sheet column order
             extra_df_aligned = extra_df_aligned[main_cols]
-
-            # Concatenate and remove exact duplicates (same Startup Name + EMAIL)
+            extra_df_aligned["Source"] = "Extra Portal"   # Tag extra source
             applications_df = pd.concat([applications_df, extra_df_aligned], ignore_index=True)
             applications_df.drop_duplicates(subset=["Startup Name", "EMAIL"], keep="first", inplace=True)
-
             st.toast(f"Merged {len(extra_df)} applications from extra portal.", icon="✅")
     except Exception as e:
         st.warning(f"Could not load extra portal sheet: {e}")
-
-# ------------------------------------------------------------------
 
 if not applications_df.empty:
     applications_df.columns = applications_df.columns.str.strip()
@@ -924,7 +911,7 @@ if not review_df.empty:
     review_df.columns = review_df.columns.str.strip()
 
 if applications_df.empty:
-    applications_df = pd.DataFrame(columns=["Startup Name", "EMAIL"])
+    applications_df = pd.DataFrame(columns=["Startup Name", "EMAIL", "Source"])
 
 if "Startup Name" not in applications_df.columns:
     applications_df["Startup Name"] = ""
@@ -980,7 +967,7 @@ merged_df["Cancellation Request"] = merged_df["Cancellation Request"].replace(""
 
 
 # =========================================================
-# TOP BAR (unchanged)
+# TOP BAR
 # =========================================================
 top_a, top_b = st.columns([5, 2])
 with top_a:
@@ -1008,7 +995,7 @@ with top_b:
 
 
 # =========================================================
-# DETAILS PAGE (unchanged)
+# DETAILS PAGE
 # =========================================================
 query_startup = st.query_params.get("startup")
 query_email = st.query_params.get("email")
@@ -1037,14 +1024,16 @@ if query_startup and query_email:
 
     st.markdown('<div class="section-heading">Application Snapshot</div>', unsafe_allow_html=True)
 
-    top1, top2, top3, top4 = st.columns(4)
+    top1, top2, top3, top4, top5 = st.columns(5)
     with top1:
         st.metric("Review Status", clean_text(selected_row.get("Final Status", "Submitted")) or "Submitted")
     with top2:
         st.metric("Application Stage", clean_text(selected_row.get("Application Stage", "Submitted")) or "Submitted")
     with top3:
-        st.metric("Evaluation Date", clean_text(selected_row.get("Evaluation Date", "")) or "-")
+        st.metric("Source", clean_text(selected_row.get("Source", "Main Portal")) or "Main Portal")
     with top4:
+        st.metric("Evaluation Date", clean_text(selected_row.get("Evaluation Date", "")) or "-")
+    with top5:
         st.metric("Decision Date", clean_text(selected_row.get("Decision Date", "")) or "-")
 
     st.markdown('<div class="section-heading">At a Glance</div>', unsafe_allow_html=True)
@@ -1231,7 +1220,7 @@ if query_startup and query_email:
 
 
 # =========================================================
-# DASHBOARD (unchanged)
+# DASHBOARD (with source filter)
 # =========================================================
 st.markdown("### Application Overview")
 
@@ -1265,14 +1254,25 @@ st.markdown("---")
 
 st.subheader("Submitted Applications")
 
-f1, f2, f3 = st.columns([2.2, 1.3, 1.3])
+# Filters
+f1, f2, f3, f4 = st.columns([2.0, 1.2, 1.2, 1.2])
+
 with f1:
     search_term = st.text_input("Search by Startup Name, DIPP Number, Industry, Sector, or Email", "")
+
 with f2:
     filter_status = st.selectbox("Filter by Status", ["All"] + status_order)
+
 with f3:
     filter_stage = st.selectbox("Filter by Stage", ["All", "Submitted", "Screening", "Review", "Evaluation", "Final Decision", "Closed"])
 
+with f4:
+    # Build source filter dynamically
+    source_list = merged_df["Source"].dropna().unique().tolist()
+    source_list_sorted = sorted(source_list)
+    filter_source = st.selectbox("Filter by Source", ["All"] + source_list_sorted)
+
+# Apply filters
 filtered_df = merged_df.copy()
 
 if search_term:
@@ -1285,6 +1285,10 @@ if filter_status != "All":
 if filter_stage != "All":
     filtered_df = filtered_df[filtered_df["Application Stage"].astype(str).str.strip() == filter_stage].copy()
 
+if filter_source != "All":
+    filtered_df = filtered_df[filtered_df["Source"] == filter_source].copy()
+
+# Prepare display table
 if "DIPP Number" not in filtered_df.columns:
     filtered_df["DIPP Number"] = [f"DIPP-{i+1}" for i in range(len(filtered_df))]
 
@@ -1294,6 +1298,7 @@ for col in ["Industry", "Sector", "Evaluation Date", "Quantum of Funds Required"
 
 display_df = filtered_df[[
     "DIPP Number", "Startup Name", "Industry", "Sector",
+    "Source",           # <-- source column
     "EMAIL", "Final Status", "Application Stage", "Evaluation Date", "Quantum of Funds Required"
 ]].copy()
 
@@ -1330,7 +1335,7 @@ if st.button("Open Application"):
 
 
 # =========================================================
-# ROLE NOTES (unchanged)
+# ROLE NOTES
 # =========================================================
 with st.expander("Access Roles", expanded=False):
     st.write("Admin: full access to view and update review actions.")
