@@ -633,22 +633,32 @@ def render_pills(values):
 # =========================================================
 ensure_review_tracker_columns()
 
+# Load main application sheet
 applications_df = load_sheet_data(SPREADSHEET_NAME, APPLICATION_SHEET)
 applications_df["Source"] = "Responses - Sheet1"
 review_df = load_sheet_data(SPREADSHEET_NAME, REVIEW_SHEET)
 
+# Clean column names and remove duplicates
 if not applications_df.empty:
     applications_df.columns = [str(c).strip() for c in applications_df.columns]
+    # Remove duplicate columns (first occurrence kept)
+    applications_df = applications_df.loc[:, ~applications_df.columns.duplicated()]
 
 if not review_df.empty:
     review_df.columns = [str(c).strip() for c in review_df.columns]
+    review_df = review_df.loc[:, ~review_df.columns.duplicated()]
 
+# --- MERGE EXTRA SHEET (with duplicate column fix) ---
 if EXTRA_SPREADSHEET_NAME and EXTRA_SHEET_NAME:
     try:
         extra_df = load_sheet_data(EXTRA_SPREADSHEET_NAME, EXTRA_SHEET_NAME)
         if not extra_df.empty:
+            # Strip whitespace from column names
             extra_df.columns = [str(c).strip() for c in extra_df.columns]
+            # Remove duplicate columns from extra_df
+            extra_df = extra_df.loc[:, ~extra_df.columns.duplicated()]
 
+            # Standardise column names
             extra_df = extra_df.rename(columns={
                 "Startup Name": "Startup Name",
                 "startup name": "Startup Name",
@@ -659,30 +669,37 @@ if EXTRA_SPREADSHEET_NAME and EXTRA_SHEET_NAME:
                 "email": "EMAIL",
             })
 
+            # Ensure required columns exist
             if "Startup Name" not in extra_df.columns:
                 extra_df["Startup Name"] = ""
             if "EMAIL" not in extra_df.columns:
                 extra_df["EMAIL"] = ""
 
+            # Add missing columns from main df to extra df (after dedup)
             for col in applications_df.columns:
                 if col not in extra_df.columns:
                     extra_df[col] = ""
 
+            # Add missing columns from extra df to main df
             for col in extra_df.columns:
                 if col not in applications_df.columns:
                     applications_df[col] = ""
 
-            main_cols = list(applications_df.columns)
-            extra_df = extra_df.reindex(columns=main_cols, fill_value="")
+            # Reindex extra_df to match main column order (now guaranteed unique)
+            main_cols_unique = applications_df.columns.tolist()
+            extra_df = extra_df.reindex(columns=main_cols_unique, fill_value="")
             extra_df["Source"] = "My Other Portal Sheet - sheet12"
 
+            # Concat and deduplicate
             applications_df["Source"] = "Responses - Sheet1"
             applications_df = pd.concat([applications_df, extra_df], ignore_index=True)
 
+            # Drop duplicates based on startup+email+source
             applications_df.drop_duplicates(subset=["Startup Name", "EMAIL", "Source"], keep="first", inplace=True)
     except Exception as e:
         st.warning(f"Could not load / merge extra portal sheet: {e}")
 
+# Final fallbacks
 if applications_df.empty:
     applications_df = pd.DataFrame(columns=["Startup Name", "EMAIL", "Source"])
 
@@ -693,16 +710,22 @@ if "EMAIL" not in applications_df.columns:
 if "Source" not in applications_df.columns:
     applications_df["Source"] = "Responses - Sheet1"
 
+# Add inferred status
 applications_df["Inferred Status"] = applications_df.apply(infer_status_from_form, axis=1)
+
+# Prepare merge keys
 applications_df["merge_startup"] = applications_df["Startup Name"].astype(str).str.strip().str.lower()
 applications_df["merge_email"] = applications_df["EMAIL"].astype(str).str.strip().str.lower()
 
+# Merge with review data
 if not review_df.empty:
-    for col in [
+    # Ensure review_df has required columns
+    required_review_cols = [
         "Startup Name", "EMAIL", "Review Status", "Application Stage",
         "Cancellation Request", "Reviewer Name", "Reviewer Comments",
         "Evaluation Date", "Decision Date", "Reason for Rejection"
-    ]:
+    ]
+    for col in required_review_cols:
         if col not in review_df.columns:
             review_df[col] = ""
 
