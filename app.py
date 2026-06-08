@@ -19,16 +19,12 @@ st.set_page_config(
 # =========================================================
 # CONFIG
 # =========================================================
-SPREADSHEET_NAME = "(Responses)"
+SPREADSHEET_NAME = "Responses"
 APPLICATION_SHEET = "Sheet1"
 REVIEW_SHEET = "Review Tracker"
 
-# Optional extra portal sheet (leave empty to disable)
-EXTRA_SPREADSHEET_NAME = st.secrets.get("extra_spreadsheet_name", "")
-EXTRA_SHEET_NAME = st.secrets.get("extra_sheet_name", "")
-
-# Column mapping for extra sheet → main sheet headers
-EXTRA_COLUMN_MAP = st.secrets.get("extra_column_map", {})
+EXTRA_SPREADSHEET_NAME = "My Other Portal Sheet"
+EXTRA_SHEET_NAME = "Sheet12"
 
 AMRITA_MAROON = "#A4123F"
 AMRITA_MAROON_DARK = "#7D1030"
@@ -44,8 +40,6 @@ SECTION_BG = "#FCFCFD"
 
 # =========================================================
 # SIMPLE LOCAL LOGIN USERS
-# Replace these with your real usernames/passwords.
-# Passwords below are stored as SHA256 hashes.
 # =========================================================
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
@@ -87,7 +81,7 @@ if "display_name" not in st.session_state:
 
 
 # =========================================================
-# CSS (unchanged)
+# CSS
 # =========================================================
 st.markdown(f"""
 <style>
@@ -149,14 +143,6 @@ st.markdown(f"""
         margin-bottom: 0.8rem !important;
     }}
 
-    .field-heading {{
-        color: {TEXT_PRIMARY} !important;
-        font-size: 1.02rem !important;
-        font-weight: 700 !important;
-        margin-top: 0.4rem !important;
-        margin-bottom: 0.5rem !important;
-    }}
-
     .login-card {{
         max-width: 480px;
         margin: 3rem auto 0 auto;
@@ -180,7 +166,6 @@ st.markdown(f"""
         margin-bottom: 1.2rem;
     }}
 
-    /* KPI cards */
     div[data-testid="stMetric"] {{
         background: {CARD_BG} !important;
         border: 1px solid {BORDER} !important;
@@ -188,10 +173,6 @@ st.markdown(f"""
         border-radius: 16px !important;
         padding: 18px 16px !important;
         box-shadow: 0 6px 18px rgba(17, 24, 39, 0.05) !important;
-    }}
-
-    [data-testid="stMetricLabel"] {{
-        margin-bottom: 6px !important;
     }}
 
     [data-testid="stMetricLabel"] p {{
@@ -202,40 +183,12 @@ st.markdown(f"""
         opacity: 1 !important;
     }}
 
-    [data-testid="stMetricValue"] {{
-        margin-top: 2px !important;
-    }}
-
     [data-testid="stMetricValue"] div {{
         color: {AMRITA_MAROON} !important;
         font-weight: 900 !important;
         font-size: 2rem !important;
         line-height: 1.1 !important;
         opacity: 1 !important;
-    }}
-
-    .stSelectbox label,
-    .stTextInput label,
-    .stTextArea label,
-    .stDateInput label {{
-        color: {TEXT_PRIMARY} !important;
-        font-weight: 800 !important;
-        font-size: 1rem !important;
-        opacity: 1 !important;
-    }}
-
-    .stSelectbox label p,
-    .stTextInput label p,
-    .stTextArea label p,
-    .stDateInput label p {{
-        color: {TEXT_PRIMARY} !important;
-        font-weight: 800 !important;
-        font-size: 1rem !important;
-        opacity: 1 !important;
-    }}
-
-    .stMarkdown, .stMarkdown p {{
-        color: {TEXT_PRIMARY} !important;
     }}
 
     .stTextInput input,
@@ -247,61 +200,6 @@ st.markdown(f"""
         border: 1px solid {BORDER} !important;
         border-radius: 12px !important;
     }}
-
-    .stSelectbox div[data-baseweb="select"] * {{
-        color: {TEXT_PRIMARY} !important;
-        opacity: 1 !important;
-    }}
-
-    /* -------- FIX FOR BLACK DROPDOWN MENU -------- */
-    div[data-baseweb="popover"] {{
-        background: #FFFFFF !important;
-    }}
-
-    div[data-baseweb="popover"] * {{
-        color: {TEXT_PRIMARY} !important;
-    }}
-
-    ul[role="listbox"] {{
-        background: #FFFFFF !important;
-        color: {TEXT_PRIMARY} !important;
-        border: 1px solid {BORDER} !important;
-        border-radius: 12px !important;
-        box-shadow: 0 10px 28px rgba(17, 24, 39, 0.10) !important;
-    }}
-
-    ul[role="listbox"] li {{
-        background: #FFFFFF !important;
-        color: {TEXT_PRIMARY} !important;
-    }}
-
-    ul[role="listbox"] li:hover {{
-        background: {SOFT_MAROON_BG} !important;
-        color: {TEXT_PRIMARY} !important;
-    }}
-
-    ul[role="listbox"] li[aria-selected="true"] {{
-        background: {SOFT_MAROON_BG} !important;
-        color: {AMRITA_MAROON} !important;
-        font-weight: 700 !important;
-    }}
-
-    div[role="option"] {{
-        background: #FFFFFF !important;
-        color: {TEXT_PRIMARY} !important;
-    }}
-
-    div[role="option"]:hover {{
-        background: {SOFT_MAROON_BG} !important;
-        color: {TEXT_PRIMARY} !important;
-    }}
-
-    div[role="option"][aria-selected="true"] {{
-        background: {SOFT_MAROON_BG} !important;
-        color: {AMRITA_MAROON} !important;
-        font-weight: 700 !important;
-    }}
-    /* -------- END FIX -------- */
 
     .stButton > button {{
         background: {AMRITA_MAROON} !important;
@@ -316,62 +214,6 @@ st.markdown(f"""
         background: {AMRITA_MAROON_DARK} !important;
         border-color: {AMRITA_MAROON_DARK} !important;
         color: #FFFFFF !important;
-    }}
-
-    .stTabs [data-baseweb="tab-list"] {{
-        gap: 10px;
-    }}
-
-    button[role="tab"] {{
-        background: #FFFFFF !important;
-        color: {TEXT_SECONDARY} !important;
-        border: 1px solid {BORDER} !important;
-        border-radius: 12px !important;
-        padding: 10px 14px !important;
-        font-weight: 800 !important;
-        opacity: 1 !important;
-    }}
-
-    button[role="tab"] p {{
-        color: inherit !important;
-        font-weight: 800 !important;
-        opacity: 1 !important;
-    }}
-
-    button[role="tab"][aria-selected="true"] {{
-        background: {AMRITA_MAROON} !important;
-        color: #FFFFFF !important;
-        border-color: {AMRITA_MAROON} !important;
-    }}
-
-    div[data-testid="stDataFrame"] {{
-        background: #FFFFFF !important;
-        border: 1px solid {BORDER} !important;
-        border-radius: 16px !important;
-        overflow: hidden !important;
-    }}
-
-    div[data-testid="stExpander"] {{
-        border: 1px solid {BORDER} !important;
-        border-radius: 16px !important;
-        background: #FFFFFF !important;
-        margin-bottom: 12px !important;
-        overflow: hidden !important;
-        box-shadow: 0 4px 12px rgba(17, 24, 39, 0.04) !important;
-    }}
-
-    div[data-testid="stExpander"] details summary {{
-        background: {SOFT_MAROON_BG} !important;
-        border-radius: 16px !important;
-        padding-top: 0.2rem !important;
-        padding-bottom: 0.2rem !important;
-    }}
-
-    div[data-testid="stExpander"] details summary p {{
-        color: {AMRITA_MAROON} !important;
-        font-size: 1.02rem !important;
-        font-weight: 900 !important;
-        opacity: 1 !important;
     }}
 
     .section-card {{
@@ -440,10 +282,8 @@ def do_login(username: str, password: str):
     user = USERS.get(username.strip())
     if not user:
         return False
-
     if user["password_hash"] != hash_password(password):
         return False
-
     st.session_state.logged_in = True
     st.session_state.username = username
     st.session_state.role = user["role"]
@@ -466,7 +306,7 @@ def role_in(allowed_roles):
 
 def show_login():
     st.markdown(
-        f"""
+        """
         <div class="login-card">
             <div class="login-title">Amrita TBI Portal Login</div>
             <div class="login-sub">Sign in to access incubation applications and review workflows.</div>
@@ -486,10 +326,7 @@ def show_login():
             else:
                 st.error("Invalid username or password.")
 
-        st.info(
-            "Demo roles: admin, reviewer, viewer. "
-            "Change these credentials in the USERS dictionary."
-        )
+        st.info("Demo roles: admin, reviewer, viewer. Change these credentials in the USERS dictionary.")
     st.stop()
 
 
@@ -530,7 +367,6 @@ def get_gsheet_client():
 
 
 def get_spreadsheet_worksheet(spreadsheet_name, sheet_name):
-    """Return a worksheet object for any spreadsheet + sheet."""
     client = get_gsheet_client()
     sheet = client.open(spreadsheet_name)
     return sheet.worksheet(sheet_name)
@@ -538,7 +374,6 @@ def get_spreadsheet_worksheet(spreadsheet_name, sheet_name):
 
 @st.cache_data(ttl=60)
 def load_sheet_data(spreadsheet_name, sheet_name):
-    """Load data from a given spreadsheet and sheet as a DataFrame."""
     ws = get_spreadsheet_worksheet(spreadsheet_name, sheet_name)
     values = ws.get_all_values()
     if not values:
@@ -592,7 +427,6 @@ def upsert_review_row(
 ):
     ws = get_spreadsheet_worksheet(SPREADSHEET_NAME, REVIEW_SHEET)
     values = ws.get_all_values()
-
     headers = values[0]
     rows = values[1:] if len(values) > 1 else []
 
@@ -666,113 +500,41 @@ def infer_application_schema(row_dict):
                 find_matching_value(row_dict, ["startup name", "company name", "venture name"])
             ]),
             "legal_entity": find_matching_value(row_dict, ["legal entity", "entity name", "registered name"]),
-            "industry": first_non_empty([
-                row_dict.get("Industry", ""),
-                find_matching_value(row_dict, ["industry"])
-            ]),
-            "sector": first_non_empty([
-                row_dict.get("Sector", ""),
-                find_matching_value(row_dict, ["sector"])
-            ]),
-            "city": first_non_empty([
-                row_dict.get("CITY/TOWN", ""),
-                find_matching_value(row_dict, ["city town", "city", "town"])
-            ]),
-            "state": first_non_empty([
-                row_dict.get("STATE", ""),
-                find_matching_value(row_dict, ["state"])
-            ]),
-            "address": first_non_empty([
-                row_dict.get("ADDRESS", ""),
-                find_matching_value(row_dict, ["address"])
-            ]),
+            "industry": first_non_empty([row_dict.get("Industry", ""), find_matching_value(row_dict, ["industry"])]),
+            "sector": first_non_empty([row_dict.get("Sector", ""), find_matching_value(row_dict, ["sector"])]),
+            "city": first_non_empty([row_dict.get("CITY/TOWN", ""), find_matching_value(row_dict, ["city town", "city", "town"])]),
+            "state": first_non_empty([row_dict.get("STATE", ""), find_matching_value(row_dict, ["state"])]),
+            "address": first_non_empty([row_dict.get("ADDRESS", ""), find_matching_value(row_dict, ["address"])]),
             "website": find_matching_value(row_dict, ["website", "web site", "linkedin", "company url"]),
-            "dipp_number": first_non_empty([
-                row_dict.get("DIPP Number", ""),
-                find_matching_value(row_dict, ["dipp", "dpiit", "recognition number"])
-            ])
+            "dipp_number": first_non_empty([row_dict.get("DIPP Number", ""), find_matching_value(row_dict, ["dipp", "dpiit", "recognition number"])])
         },
         "startup": {
-            "company_overview": first_non_empty([
-                row_dict.get("BRIEFLY DESCRIBE THE COMPANY AND PRODUCT OFFERED", ""),
-                find_matching_value(row_dict, ["company and product", "company overview", "product offered"])
-            ]),
-            "problem_statement": first_non_empty([
-                row_dict.get("DESCRIBE THE PROBLEM YOU ARE TRYING TO SOLVE", ""),
-                find_matching_value(row_dict, ["problem you are trying to solve", "problem statement", "problem"])
-            ]),
-            "solution_uniqueness": first_non_empty([
-                row_dict.get("WHAT IS UNIQUE ABOUT YOUR SOLUTION", ""),
-                find_matching_value(row_dict, ["unique about your solution", "unique solution", "differentiation"])
-            ]),
-            "value_proposition": first_non_empty([
-                row_dict.get("PLEASE PROVIDE VALUE PROPOSITION PROVIDED FOR THE CUSTOMER SEGMENT", ""),
-                find_matching_value(row_dict, ["value proposition", "customer segment"])
-            ]),
-            "target_market": first_non_empty([
-                find_matching_value(row_dict, ["target customer", "customer segment", "target market", "market served"]),
-                row_dict.get("Sector", "")
-            ]),
-            "competitors": first_non_empty([
-                row_dict.get("WHO ARE YOUR COMPETITORS AND WHAT IS YOUR COMPETITVE ADVANTAGE", ""),
-                find_matching_value(row_dict, ["competitors", "competitive advantage"])
-            ]),
-            "traction": first_non_empty([
-                row_dict.get("WHAT IS THE CURRENT TRACTION?", ""),
-                find_matching_value(row_dict, ["current traction", "traction"])
-            ]),
-            "startup_stage": first_non_empty([
-                row_dict.get("AT WHAT STAGE IS YOUR STARTUP?", ""),
-                find_matching_value(row_dict, ["startup stage", "stage is your startup", "company stage"])
-            ]),
-            "marketing_plan": first_non_empty([
-                row_dict.get("HOW DOES THE COMPANY MARKET OR PLAN TO MARKET ITS PRODUCTS OR SERVICES?", ""),
-                find_matching_value(row_dict, ["market its products", "go to market", "marketing plan", "marketing strategy"])
-            ]),
-            "incubation_needed": first_non_empty([
-                row_dict.get("TYPE OF INCUBATION NEEDED", ""),
-                find_matching_value(row_dict, ["type of incubation needed", "incubation needed"])
-            ]),
-            "source_channel": first_non_empty([
-                row_dict.get("WHERE DID YOU HEAR ABOUT AMRITA TBI?", ""),
-                find_matching_value(row_dict, ["hear about amrita", "source", "referral source"])
-            ])
+            "company_overview": first_non_empty([row_dict.get("BRIEFLY DESCRIBE THE COMPANY AND PRODUCT OFFERED", ""), find_matching_value(row_dict, ["company and product", "company overview", "product offered"])]),
+            "problem_statement": first_non_empty([row_dict.get("DESCRIBE THE PROBLEM YOU ARE TRYING TO SOLVE", ""), find_matching_value(row_dict, ["problem you are trying to solve", "problem statement", "problem"])]),
+            "solution_uniqueness": first_non_empty([row_dict.get("WHAT IS UNIQUE ABOUT YOUR SOLUTION", ""), find_matching_value(row_dict, ["unique about your solution", "unique solution", "differentiation"])]),
+            "value_proposition": first_non_empty([row_dict.get("PLEASE PROVIDE VALUE PROPOSITION PROVIDED FOR THE CUSTOMER SEGMENT", ""), find_matching_value(row_dict, ["value proposition", "customer segment"])]),
+            "target_market": first_non_empty([find_matching_value(row_dict, ["target customer", "customer segment", "target market", "market served"]), row_dict.get("Sector", "")]),
+            "competitors": first_non_empty([row_dict.get("WHO ARE YOUR COMPETITORS AND WHAT IS YOUR COMPETITVE ADVANTAGE", ""), find_matching_value(row_dict, ["competitors", "competitive advantage"])]),
+            "traction": first_non_empty([row_dict.get("WHAT IS THE CURRENT TRACTION?", ""), find_matching_value(row_dict, ["current traction", "traction"])]),
+            "startup_stage": first_non_empty([row_dict.get("AT WHAT STAGE IS YOUR STARTUP?", ""), find_matching_value(row_dict, ["startup stage", "stage is your startup", "company stage"])]),
+            "marketing_plan": first_non_empty([row_dict.get("HOW DOES THE COMPANY MARKET OR PLAN TO MARKET ITS PRODUCTS OR SERVICES?", ""), find_matching_value(row_dict, ["market its products", "go to market", "marketing plan", "marketing strategy"])]),
+            "incubation_needed": first_non_empty([row_dict.get("TYPE OF INCUBATION NEEDED", ""), find_matching_value(row_dict, ["type of incubation needed", "incubation needed"])]),
+            "source_channel": first_non_empty([row_dict.get("WHERE DID YOU HEAR ABOUT AMRITA TBI?", ""), find_matching_value(row_dict, ["hear about amrita", "source", "referral source"])])
         },
         "representative": {
-            "name": first_non_empty([
-                row_dict.get("Name", ""),
-                find_matching_value(row_dict, ["authorized representative", "authorised representative", "founder name", "contact person", "full name", "name"])
-            ]),
-            "email": first_non_empty([
-                row_dict.get("EMAIL", ""),
-                find_matching_value(row_dict, ["email", "mail"])
-            ]),
-            "phone": first_non_empty([
-                row_dict.get("PHONE", ""),
-                find_matching_value(row_dict, ["phone", "mobile", "contact number"])
-            ]),
+            "name": first_non_empty([row_dict.get("Name", ""), find_matching_value(row_dict, ["authorized representative", "authorised representative", "founder name", "contact person", "full name", "name"])]),
+            "email": first_non_empty([row_dict.get("EMAIL", ""), find_matching_value(row_dict, ["email", "mail"])]),
+            "phone": first_non_empty([row_dict.get("PHONE", ""), find_matching_value(row_dict, ["phone", "mobile", "contact number"])]),
             "designation": find_matching_value(row_dict, ["designation", "role", "position", "title"])
         },
         "team": {
-            "team_background": first_non_empty([
-                row_dict.get("DESCRIBE YOUR TEAM AND BACKGROUND", ""),
-                find_matching_value(row_dict, ["team and background", "team background", "founding team"])
-            ]),
+            "team_background": first_non_empty([row_dict.get("DESCRIBE YOUR TEAM AND BACKGROUND", ""), find_matching_value(row_dict, ["team and background", "team background", "founding team"])]),
             "team_size": find_matching_value(row_dict, ["team size", "number of employees", "employees", "members"])
         },
         "funding": {
-            "revenue_model": first_non_empty([
-                row_dict.get("PLEASE EXPLAIN YOUR REVENUE MODEL", ""),
-                find_matching_value(row_dict, ["revenue model", "business model"])
-            ]),
-            "market_size": first_non_empty([
-                row_dict.get("WHAT IS THE POTENTIAL MARKET SIZE FOR YOUR PRODUCT", ""),
-                find_matching_value(row_dict, ["market size", "potential market size", "tam", "sam", "som"])
-            ]),
-            "funds_required": first_non_empty([
-                row_dict.get("Quantum of Funds Required", ""),
-                find_matching_value(row_dict, ["funds required", "investment sought", "capital required", "quantum of funds required"])
-            ]),
+            "revenue_model": first_non_empty([row_dict.get("PLEASE EXPLAIN YOUR REVENUE MODEL", ""), find_matching_value(row_dict, ["revenue model", "business model"])]),
+            "market_size": first_non_empty([row_dict.get("WHAT IS THE POTENTIAL MARKET SIZE FOR YOUR PRODUCT", ""), find_matching_value(row_dict, ["market size", "potential market size", "tam", "sam", "som"])]),
+            "funds_required": first_non_empty([row_dict.get("Quantum of Funds Required", ""), find_matching_value(row_dict, ["funds required", "investment sought", "capital required", "quantum of funds required"])]),
             "funding_stage": find_matching_value(row_dict, ["funding stage", "round", "raising stage"])
         }
     }
@@ -782,15 +544,9 @@ def infer_application_schema(row_dict):
         val = clean_text(value)
         if not val:
             continue
-        if (
-            "upload" in slug(key)
-            or "document" in slug(key)
-            or val.startswith("http://")
-            or val.startswith("https://")
-        ):
+        if "upload" in slug(key) or "document" in slug(key) or val.startswith("http://") or val.startswith("https://"):
             docs.append((key, val))
     structured["documents"] = docs
-
     return structured
 
 
@@ -818,21 +574,16 @@ def infer_status_from_form(row):
 
 
 def build_detail_params(startup_name, email):
-    return {
-        "startup": clean_text(startup_name),
-        "email": clean_text(email)
-    }
+    return {"startup": clean_text(startup_name), "email": clean_text(email)}
 
 
 def find_application(df, startup_name, email):
     startup_key = normalize_key(startup_name)
     email_key = normalize_key(email)
-
     match = df[
         (df["Startup Name"].astype(str).str.strip().str.lower() == startup_key) &
         (df["EMAIL"].astype(str).str.strip().str.lower() == email_key)
     ]
-
     if match.empty:
         return None
     return match.iloc[0].to_dict()
@@ -878,56 +629,59 @@ def render_pills(values):
 
 
 # =========================================================
-# LOAD DATA (with source tagging and extra sheet merge)
+# LOAD DATA
 # =========================================================
 ensure_review_tracker_columns()
 
-# Load main applications
 applications_df = load_sheet_data(SPREADSHEET_NAME, APPLICATION_SHEET)
-applications_df["Source"] = "Main Portal"          # Tag source
+applications_df["Source"] = "Responses - Sheet1"
 review_df = load_sheet_data(SPREADSHEET_NAME, REVIEW_SHEET)
 
-# Load and merge extra portal sheet (if configured)
+if not applications_df.empty:
+    applications_df.columns = [str(c).strip() for c in applications_df.columns]
+
+if not review_df.empty:
+    review_df.columns = [str(c).strip() for c in review_df.columns]
+
 if EXTRA_SPREADSHEET_NAME and EXTRA_SHEET_NAME:
     try:
         extra_df = load_sheet_data(EXTRA_SPREADSHEET_NAME, EXTRA_SHEET_NAME)
         if not extra_df.empty:
-            # Normalize column names
             extra_df.columns = [str(c).strip() for c in extra_df.columns]
-            applications_df.columns = [str(c).strip() for c in applications_df.columns]
 
-            # Apply column mapping (from secrets)
-            extra_df.rename(columns=EXTRA_COLUMN_MAP, inplace=True)
+            extra_df = extra_df.rename(columns={
+                "Startup Name": "Startup Name",
+                "startup name": "Startup Name",
+                "StartupName": "Startup Name",
+                "Name": "Startup Name",
+                "EMAIL": "EMAIL",
+                "Email": "EMAIL",
+                "email": "EMAIL",
+            })
 
-            # Align columns: keep all main columns, fill missing with ""
-            main_cols = list(applications_df.columns)
-            for col in main_cols:
+            if "Startup Name" not in extra_df.columns:
+                extra_df["Startup Name"] = ""
+            if "EMAIL" not in extra_df.columns:
+                extra_df["EMAIL"] = ""
+
+            for col in applications_df.columns:
                 if col not in extra_df.columns:
                     extra_df[col] = ""
-            extra_df_aligned = extra_df[main_cols].copy()
-            extra_df_aligned["Source"] = "Extra Portal"
 
-            # Concatenate and drop duplicates (keep main entry if duplicate)
-            applications_df = pd.concat([applications_df, extra_df_aligned], ignore_index=True)
-            applications_df.drop_duplicates(subset=["Startup Name", "EMAIL"], keep="first", inplace=True)
+            for col in extra_df.columns:
+                if col not in applications_df.columns:
+                    applications_df[col] = ""
 
-            st.toast(f"Merged {len(extra_df)} applications from extra portal.", icon="✅")
+            main_cols = list(applications_df.columns)
+            extra_df = extra_df.reindex(columns=main_cols, fill_value="")
+            extra_df["Source"] = "My Other Portal Sheet - sheet12"
 
-            # Debug panel (only if debug_merge secret is True)
-            if st.secrets.get("debug_merge", False):
-                with st.expander("🔍 Debug: Column alignment (temporary)"):
-                    st.write("**Main sheet columns:**", list(applications_df.columns))
-                    st.write("**Extra sheet columns (after mapping):**", list(extra_df_aligned.columns))
-                    st.write("**Merged data (first 5 rows):**")
-                    st.dataframe(applications_df.head())
+            applications_df["Source"] = "Responses - Sheet1"
+            applications_df = pd.concat([applications_df, extra_df], ignore_index=True)
+
+            applications_df.drop_duplicates(subset=["Startup Name", "EMAIL", "Source"], keep="first", inplace=True)
     except Exception as e:
         st.warning(f"Could not load / merge extra portal sheet: {e}")
-
-if not applications_df.empty:
-    applications_df.columns = applications_df.columns.str.strip()
-
-if not review_df.empty:
-    review_df.columns = review_df.columns.str.strip()
 
 if applications_df.empty:
     applications_df = pd.DataFrame(columns=["Startup Name", "EMAIL", "Source"])
@@ -936,9 +690,10 @@ if "Startup Name" not in applications_df.columns:
     applications_df["Startup Name"] = ""
 if "EMAIL" not in applications_df.columns:
     applications_df["EMAIL"] = ""
+if "Source" not in applications_df.columns:
+    applications_df["Source"] = "Responses - Sheet1"
 
 applications_df["Inferred Status"] = applications_df.apply(infer_status_from_form, axis=1)
-
 applications_df["merge_startup"] = applications_df["Startup Name"].astype(str).str.strip().str.lower()
 applications_df["merge_email"] = applications_df["EMAIL"].astype(str).str.strip().str.lower()
 
@@ -972,13 +727,11 @@ else:
     ]:
         merged_df[col] = ""
 
-
 def resolve_final_status(row):
     review_status = clean_text(row.get("Review Status", ""))
     if review_status:
         return review_status
     return row.get("Inferred Status", "Submitted")
-
 
 merged_df["Final Status"] = merged_df.apply(resolve_final_status, axis=1)
 merged_df["Application Stage"] = merged_df["Application Stage"].replace("", "Submitted")
@@ -990,7 +743,7 @@ merged_df["Cancellation Request"] = merged_df["Cancellation Request"].replace(""
 # =========================================================
 top_a, top_b = st.columns([5, 2])
 with top_a:
-    st.markdown(f"""
+    st.markdown("""
     <div class="portal-banner">
         <h1>Amrita TBI - Incubation Portal</h1>
         <div class="portal-sub">Application review and incubation workflow dashboard.</div>
@@ -1049,7 +802,7 @@ if query_startup and query_email:
     with top2:
         st.metric("Application Stage", clean_text(selected_row.get("Application Stage", "Submitted")) or "Submitted")
     with top3:
-        st.metric("Source", clean_text(selected_row.get("Source", "Main Portal")) or "Main Portal")
+        st.metric("Source", clean_text(selected_row.get("Source", "Responses - Sheet1")) or "Responses - Sheet1")
     with top4:
         st.metric("Evaluation Date", clean_text(selected_row.get("Evaluation Date", "")) or "-")
     with top5:
@@ -1105,9 +858,7 @@ if query_startup and query_email:
             ], columns=2)
 
         with st.expander("➕ Startup Team", expanded=False):
-            render_kv_grid([
-                ("Team Size", profile["team"]["team_size"])
-            ], columns=1)
+            render_kv_grid([("Team Size", profile["team"]["team_size"])], columns=1)
             render_narrative("Team Background", profile["team"]["team_background"])
 
         with st.expander("➕ Funding Details", expanded=False):
@@ -1142,27 +893,11 @@ if query_startup and query_email:
                         "Cancellation Requested"
                     ],
                     index=[
-                        "Submitted",
-                        "To be Reviewed",
-                        "Incomplete",
-                        "On Hold",
-                        "Selected",
-                        "Rejected",
-                        "Closed",
-                        "Cancelled",
-                        "System Rejected",
-                        "Cancellation Requested"
+                        "Submitted", "To be Reviewed", "Incomplete", "On Hold", "Selected",
+                        "Rejected", "Closed", "Cancelled", "System Rejected", "Cancellation Requested"
                     ].index(current_status) if current_status in [
-                        "Submitted",
-                        "To be Reviewed",
-                        "Incomplete",
-                        "On Hold",
-                        "Selected",
-                        "Rejected",
-                        "Closed",
-                        "Cancelled",
-                        "System Rejected",
-                        "Cancellation Requested"
+                        "Submitted", "To be Reviewed", "Incomplete", "On Hold", "Selected",
+                        "Rejected", "Closed", "Cancelled", "System Rejected", "Cancellation Requested"
                     ] else 0
                 )
 
@@ -1185,25 +920,10 @@ if query_startup and query_email:
                     value=clean_text(selected_row.get("Reviewer Name", "")) or st.session_state.display_name
                 )
 
-                evaluation_date = st.text_input(
-                    "Evaluation Date",
-                    value=clean_text(selected_row.get("Evaluation Date", ""))
-                )
-
-                decision_date = st.text_input(
-                    "Decision Date",
-                    value=clean_text(selected_row.get("Decision Date", ""))
-                )
-
-                reason_for_rejection = st.text_area(
-                    "Reason for Rejection",
-                    value=clean_text(selected_row.get("Reason for Rejection", ""))
-                )
-
-                reviewer_comments = st.text_area(
-                    "Reviewer Comments",
-                    value=clean_text(selected_row.get("Reviewer Comments", ""))
-                )
+                evaluation_date = st.text_input("Evaluation Date", value=clean_text(selected_row.get("Evaluation Date", "")))
+                decision_date = st.text_input("Decision Date", value=clean_text(selected_row.get("Decision Date", "")))
+                reason_for_rejection = st.text_area("Reason for Rejection", value=clean_text(selected_row.get("Reason for Rejection", "")))
+                reviewer_comments = st.text_area("Reviewer Comments", value=clean_text(selected_row.get("Reviewer Comments", "")))
 
                 submitted = st.form_submit_button("Save Review Decision")
 
@@ -1239,7 +959,7 @@ if query_startup and query_email:
 
 
 # =========================================================
-# DASHBOARD (with source filter)
+# DASHBOARD
 # =========================================================
 st.markdown("### Application Overview")
 
@@ -1273,7 +993,6 @@ st.markdown("---")
 
 st.subheader("Submitted Applications")
 
-# Filters
 f1, f2, f3, f4 = st.columns([2.0, 1.2, 1.2, 1.2])
 
 with f1:
@@ -1286,12 +1005,10 @@ with f3:
     filter_stage = st.selectbox("Filter by Stage", ["All", "Submitted", "Screening", "Review", "Evaluation", "Final Decision", "Closed"])
 
 with f4:
-    # Build source filter dynamically
     source_list = merged_df["Source"].dropna().unique().tolist()
     source_list_sorted = sorted(source_list)
     filter_source = st.selectbox("Filter by Source", ["All"] + source_list_sorted)
 
-# Apply filters
 filtered_df = merged_df.copy()
 
 if search_term:
@@ -1307,7 +1024,6 @@ if filter_stage != "All":
 if filter_source != "All":
     filtered_df = filtered_df[filtered_df["Source"] == filter_source].copy()
 
-# Prepare display table
 if "DIPP Number" not in filtered_df.columns:
     filtered_df["DIPP Number"] = [f"DIPP-{i+1}" for i in range(len(filtered_df))]
 
@@ -1317,8 +1033,8 @@ for col in ["Industry", "Sector", "Evaluation Date", "Quantum of Funds Required"
 
 display_df = filtered_df[[
     "DIPP Number", "Startup Name", "Industry", "Sector",
-    "Source",           # <-- source column
-    "EMAIL", "Final Status", "Application Stage", "Evaluation Date", "Quantum of Funds Required"
+    "Source", "EMAIL", "Final Status", "Application Stage",
+    "Evaluation Date", "Quantum of Funds Required"
 ]].copy()
 
 display_df = display_df.rename(columns={
@@ -1353,9 +1069,6 @@ if st.button("Open Application"):
     st.rerun()
 
 
-# =========================================================
-# ROLE NOTES
-# =========================================================
 with st.expander("Access Roles", expanded=False):
     st.write("Admin: full access to view and update review actions.")
     st.write("Reviewer: can view applications and update review actions.")
