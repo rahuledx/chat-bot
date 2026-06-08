@@ -19,12 +19,18 @@ st.set_page_config(
 # =========================================================
 # CONFIG
 # =========================================================
+# You can also load these from st.secrets if needed
 SPREADSHEET_NAME = "Responses"
 APPLICATION_SHEET = "Sheet1"
 REVIEW_SHEET = "Review Tracker"
 
+# Option 1: Hardcoded (original)
 EXTRA_SPREADSHEET_NAME = "My Other Portal Sheet"
 EXTRA_SHEET_NAME = "Sheet12"
+
+# Option 2: Read from secrets (uncomment if you have added them in .streamlit/secrets.toml)
+# EXTRA_SPREADSHEET_NAME = st.secrets.get("extra_spreadsheet_name", "My Other Portal Sheet")
+# EXTRA_SHEET_NAME = st.secrets.get("extra_sheet_name", "Sheet12")
 
 AMRITA_MAROON = "#A4123F"
 AMRITA_MAROON_DARK = "#7D1030"
@@ -636,29 +642,29 @@ ensure_review_tracker_columns()
 # Load main application sheet
 applications_df = load_sheet_data(SPREADSHEET_NAME, APPLICATION_SHEET)
 applications_df["Source"] = "Responses - Sheet1"
+
+# Load review tracker sheet
 review_df = load_sheet_data(SPREADSHEET_NAME, REVIEW_SHEET)
 
-# Clean column names and remove duplicates
+# Clean column names and remove duplicates from main dataframe
 if not applications_df.empty:
     applications_df.columns = [str(c).strip() for c in applications_df.columns]
-    # Remove duplicate columns (first occurrence kept)
     applications_df = applications_df.loc[:, ~applications_df.columns.duplicated()]
 
 if not review_df.empty:
     review_df.columns = [str(c).strip() for c in review_df.columns]
     review_df = review_df.loc[:, ~review_df.columns.duplicated()]
 
-# --- MERGE EXTRA SHEET (with duplicate column fix) ---
+# ========== MERGE EXTRA SHEET (Robust duplicate handling) ==========
 if EXTRA_SPREADSHEET_NAME and EXTRA_SHEET_NAME:
     try:
         extra_df = load_sheet_data(EXTRA_SPREADSHEET_NAME, EXTRA_SHEET_NAME)
         if not extra_df.empty:
-            # Strip whitespace from column names
+            # 1. Strip whitespace and remove duplicate columns in extra_df
             extra_df.columns = [str(c).strip() for c in extra_df.columns]
-            # Remove duplicate columns from extra_df
             extra_df = extra_df.loc[:, ~extra_df.columns.duplicated()]
 
-            # Standardise column names
+            # 2. Rename common columns to standard names
             extra_df = extra_df.rename(columns={
                 "Startup Name": "Startup Name",
                 "startup name": "Startup Name",
@@ -669,32 +675,51 @@ if EXTRA_SPREADSHEET_NAME and EXTRA_SHEET_NAME:
                 "email": "EMAIL",
             })
 
-            # Ensure required columns exist
+            # 3. Ensure required key columns exist
             if "Startup Name" not in extra_df.columns:
                 extra_df["Startup Name"] = ""
             if "EMAIL" not in extra_df.columns:
                 extra_df["EMAIL"] = ""
 
-            # Add missing columns from main df to extra df (after dedup)
+            # 4. Re‑deduplicate applications_df columns before merging
+            applications_df = applications_df.loc[:, ~applications_df.columns.duplicated()]
+
+            # 5. Add missing columns from main df to extra df
             for col in applications_df.columns:
                 if col not in extra_df.columns:
                     extra_df[col] = ""
 
-            # Add missing columns from extra df to main df
+            # 6. Add missing columns from extra df to main df
             for col in extra_df.columns:
                 if col not in applications_df.columns:
                     applications_df[col] = ""
 
-            # Reindex extra_df to match main column order (now guaranteed unique)
-            main_cols_unique = applications_df.columns.tolist()
-            extra_df = extra_df.reindex(columns=main_cols_unique, fill_value="")
-            extra_df["Source"] = "My Other Portal Sheet - sheet12"
+            # 7. Final deduplication of both dataframes
+            applications_df = applications_df.loc[:, ~applications_df.columns.duplicated()]
+            extra_df = extra_df.loc[:, ~extra_df.columns.duplicated()]
 
-            # Concat and deduplicate
+            # 8. Build a unique list of column names for reindexing
+            main_cols_unique = applications_df.columns.tolist()
+            # Remove any lingering duplicates (should be none, but safe)
+            seen = set()
+            main_cols_unique = [c for c in main_cols_unique if not (c in seen or seen.add(c))]
+
+            # 9. Try to reindex extra_df; if fails, fallback to manual column alignment
+            try:
+                extra_df = extra_df.reindex(columns=main_cols_unique, fill_value="")
+            except Exception as reindex_err:
+                st.warning(f"Reindex failed, using manual column alignment: {reindex_err}")
+                for col in main_cols_unique:
+                    if col not in extra_df.columns:
+                        extra_df[col] = ""
+                extra_df = extra_df[main_cols_unique]
+
+            # 10. Tag the source and concatenate
+            extra_df["Source"] = "My Other Portal Sheet - sheet12"
             applications_df["Source"] = "Responses - Sheet1"
             applications_df = pd.concat([applications_df, extra_df], ignore_index=True)
 
-            # Drop duplicates based on startup+email+source
+            # 11. Remove duplicate rows based on startup name + email + source
             applications_df.drop_duplicates(subset=["Startup Name", "EMAIL", "Source"], keep="first", inplace=True)
     except Exception as e:
         st.warning(f"Could not load / merge extra portal sheet: {e}")
