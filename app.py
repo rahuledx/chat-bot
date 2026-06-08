@@ -27,6 +27,9 @@ REVIEW_SHEET = "Review Tracker"
 EXTRA_SPREADSHEET_NAME = st.secrets.get("extra_spreadsheet_name", "")
 EXTRA_SHEET_NAME = st.secrets.get("extra_sheet_name", "")
 
+# Column mapping for extra sheet → main sheet headers
+EXTRA_COLUMN_MAP = st.secrets.get("extra_column_map", {})
+
 AMRITA_MAROON = "#A4123F"
 AMRITA_MAROON_DARK = "#7D1030"
 PAGE_BG = "#F6F7FB"
@@ -889,20 +892,36 @@ if EXTRA_SPREADSHEET_NAME and EXTRA_SHEET_NAME:
     try:
         extra_df = load_sheet_data(EXTRA_SPREADSHEET_NAME, EXTRA_SHEET_NAME)
         if not extra_df.empty:
+            # Normalize column names
+            extra_df.columns = [str(c).strip() for c in extra_df.columns]
+            applications_df.columns = [str(c).strip() for c in applications_df.columns]
+
+            # Apply column mapping (from secrets)
+            extra_df.rename(columns=EXTRA_COLUMN_MAP, inplace=True)
+
+            # Align columns: keep all main columns, fill missing with ""
             main_cols = list(applications_df.columns)
-            extra_cols = list(extra_df.columns)
-            common_cols = [c for c in extra_cols if c in main_cols]
-            extra_df_aligned = extra_df[common_cols].copy()
             for col in main_cols:
-                if col not in extra_df_aligned.columns:
-                    extra_df_aligned[col] = ""
-            extra_df_aligned = extra_df_aligned[main_cols]
-            extra_df_aligned["Source"] = "Extra Portal"   # Tag extra source
+                if col not in extra_df.columns:
+                    extra_df[col] = ""
+            extra_df_aligned = extra_df[main_cols].copy()
+            extra_df_aligned["Source"] = "Extra Portal"
+
+            # Concatenate and drop duplicates (keep main entry if duplicate)
             applications_df = pd.concat([applications_df, extra_df_aligned], ignore_index=True)
             applications_df.drop_duplicates(subset=["Startup Name", "EMAIL"], keep="first", inplace=True)
+
             st.toast(f"Merged {len(extra_df)} applications from extra portal.", icon="✅")
+
+            # Debug panel (only if debug_merge secret is True)
+            if st.secrets.get("debug_merge", False):
+                with st.expander("🔍 Debug: Column alignment (temporary)"):
+                    st.write("**Main sheet columns:**", list(applications_df.columns))
+                    st.write("**Extra sheet columns (after mapping):**", list(extra_df_aligned.columns))
+                    st.write("**Merged data (first 5 rows):**")
+                    st.dataframe(applications_df.head())
     except Exception as e:
-        st.warning(f"Could not load extra portal sheet: {e}")
+        st.warning(f"Could not load / merge extra portal sheet: {e}")
 
 if not applications_df.empty:
     applications_df.columns = applications_df.columns.str.strip()
