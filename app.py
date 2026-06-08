@@ -19,7 +19,7 @@ st.set_page_config(
 # =========================================================
 # CONFIG
 # =========================================================
-SPREADSHEET_NAME = "Responses"
+SPREADSHEET_NAME = "(Responses)"
 APPLICATION_SHEET = "Sheet1"
 REVIEW_SHEET = "Review Tracker"
 
