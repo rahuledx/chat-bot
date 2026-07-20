@@ -13,6 +13,13 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 .main {font-family: 'Inter', sans-serif;}
+
+/* Hide "Press Enter to Apply" tooltip */
+div[data-testid="InputInstructions"] > span:nth-child(1) {
+    visibility: hidden !important;
+    display: none !important;
+}
+
 .hero-title {
     font-size: 3.2rem !important; font-weight: 800 !important;
     background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899);
@@ -28,10 +35,28 @@ st.markdown("""
     padding: 2.5rem !important; margin-bottom: 2rem !important;
     box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3) !important;
 }
+
+/* Logo styling */
+.logo-container {
+    text-align: center;
+    margin-bottom: 2rem;
+    padding: 1rem;
+}
+.logo-container img {
+    max-width: 280px;
+    height: auto;
+}
 </style>
 """, unsafe_allow_html=True)
 
 st.set_page_config(page_title="Lead Duplicate Finder", page_icon="🔍", layout="wide")
+
+# AMRITA ONLINE LOGO
+st.markdown("""
+<div class="logo-container">
+    <img src="https://admin.onlineamrita.com/sites/default/files/2025-04/Amrita%20Online%20Logo%20red%201.svg" alt="Amrita Online Logo">
+</div>
+""", unsafe_allow_html=True)
 
 # ---------- YOUR EXACT FUNCTIONS (UNCHANGED) ----------
 def normalize_gmail(email: str) -> str:
@@ -209,7 +234,7 @@ st.markdown('<h1 class="hero-title">Lead Duplicate Finder</h1>', unsafe_allow_ht
 st.markdown('<p class="subtitle-text">S3 URL or File → Instant Duplicate Detection → Clean CRM Data</p>', unsafe_allow_html=True)
 
 # URL + FILE TABS
-tab1, tab2 = st.tabs(["🔗 URL Mode", "📁 File Upload"])
+tab1, tab2 = st.tabs(["🔗 Profile Link Mode", "📁 File Upload"])
 
 with st.sidebar:
     st.markdown("### 🎛️ Detection Rules")
@@ -218,6 +243,45 @@ with st.sidebar:
     - **Name+DOB+Course**: Exact matches
     - **DOB Only**: Same birthdays
     """)
+    
+    st.markdown("### 📋 Student Information")
+    # Program dropdown
+    programs = [
+        "Online MBA",
+        "Online MCA",
+        "Online MCom",
+        "Online BCom",
+        "Online BBA",
+        "Online BCA"
+    ]
+    selected_program = st.selectbox(
+        "Program",
+        options=programs,
+        index=None,
+        placeholder="Select your program"
+    )
+    
+    # Semester dropdown
+    semesters = [
+        "Semester 1",
+        "Semester 2",
+        "Semester 3",
+        "Semester 4",
+        "Semester 5",
+        "Semester 6"
+    ]
+    selected_semester = st.selectbox(
+        "Semester",
+        options=semesters,
+        index=None,
+        placeholder="Select your semester"
+    )
+    
+    # Email input
+    student_email = st.text_input(
+        "Email",
+        placeholder="Enter your email address"
+    )
 
 uploaded_file = None
 df = None
@@ -225,13 +289,22 @@ df = None
 with tab1:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.markdown("### 🌐 Paste S3 Presigned URL")
-    url_input = st.text_area("Paste your S3 ZIP link:", height=100, placeholder="https://lsqsgpcontainer.s3.ap-southeast-1.amazonaws.com/...")
+    url_input = st.text_area(
+        "Paste your S3 ZIP link:",
+        height=100,
+        placeholder="https://lsqsgpcontainer.s3.ap-southeast-1.amazonaws.com/..."
+    )
     if st.button("🔍 ANALYZE FROM URL", type="primary", use_container_width=True):
         if url_input.strip():
             df_from_url = download_and_extract_zip(url_input.strip())
             if df_from_url is not None:
                 st.session_state.df = df_from_url
                 st.session_state.processed = True
+                st.session_state.student_info = {
+                    "program": selected_program,
+                    "semester": selected_semester,
+                    "email": student_email
+                }
                 st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -244,17 +317,40 @@ with tab2:
 if 'df' not in st.session_state:
     st.session_state.df = None
     st.session_state.processed = False
+    st.session_state.student_info = None
 
 # LOAD DATA
 if st.session_state.df is not None and st.session_state.processed:
     df = st.session_state.df.copy()
+    student_info = st.session_state.student_info
 elif uploaded_file is not None:
     if uploaded_file.name.endswith('.csv'):
         df = pd.read_csv(uploaded_file, dtype=str, low_memory=False)
     else:
         df = pd.read_excel(uploaded_file, dtype=str)
+    student_info = {
+        "program": selected_program,
+        "semester": selected_semester,
+        "email": student_email
+    }
 
 if df is not None:
+    # Display student info if available
+    if student_info and (student_info.get("program") or student_info.get("semester") or student_info.get("email")):
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("### 📋 Student Information")
+        info_cols = st.columns(3)
+        with info_cols[0]:
+            if student_info.get("program"):
+                st.info(f"**Program:** {student_info['program']}")
+        with info_cols[1]:
+            if student_info.get("semester"):
+                st.info(f"**Semester:** {student_info['semester']}")
+        with info_cols[2]:
+            if student_info.get("email"):
+                st.info(f"**Email:** {student_info['email']}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
     progress_bar = st.progress(0)
     status_text = st.empty()
     
