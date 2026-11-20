@@ -615,9 +615,12 @@ with st.expander("⚙️ Optional: Override Specific Column Mappings (Pre-config
 # Build processed dataframe
 full_df = build_dashboard_dataset(raw_df, custom_overrides)
 
-# ---------------- COURSE BUTTON SLICER ----------------
+# ---------------- COURSE & MULTI-SELECT SEASON BUTTON SLICERS ----------------
 if "selected_course_btn" not in st.session_state:
     st.session_state.selected_course_btn = "All Courses"
+
+if "selected_seasons" not in st.session_state:
+    st.session_state.selected_seasons = []
 
 course_values = sorted([
     str(c).strip() for c in full_df["_Programme"].dropna().unique()
@@ -628,9 +631,16 @@ all_course_buttons = ["All Courses"] + course_values
 if st.session_state.selected_course_btn not in all_course_buttons:
     st.session_state.selected_course_btn = "All Courses"
 
-st.markdown('<div class="slicer-box">', unsafe_allow_html=True)
-st.markdown("##### 🎯 Course Slicer (Certificate Programs Excluded — Click a Course button to filter all charts)")
+season_values = sorted([
+    str(s).strip() for s in full_df["_Admission_Cycle"].dropna().unique()
+    if str(s).strip() not in ["", "nan", "None"]
+])
+st.session_state.selected_seasons = [s for s in st.session_state.selected_seasons if s in season_values]
 
+st.markdown('<div class="slicer-box">', unsafe_allow_html=True)
+
+# 1. Course Slicer Buttons
+st.markdown("##### 🎯 Course Slicer (Certificate Programs Excluded — Click a Course button to filter)")
 btns_per_row = 6
 for i in range(0, len(all_course_buttons), btns_per_row):
     row_slice = all_course_buttons[i:i + btns_per_row]
@@ -645,23 +655,65 @@ for i in range(0, len(all_course_buttons), btns_per_row):
             st.session_state.selected_course_btn = c_label
             st.rerun()
 
+st.markdown("---")
+
+# 2. Multi-Select Season Slicer Buttons (from Season column)
+active_seasons_label = ", ".join(st.session_state.selected_seasons) if st.session_state.selected_seasons else "All Seasons"
+st.markdown(f"##### 📅 Season Multi-Select Slicer (Click one or more Season buttons — Active: **{active_seasons_label}**)")
+
+if season_values:
+    all_season_buttons = ["All Seasons"] + season_values
+    for i in range(0, len(all_season_buttons), btns_per_row):
+        row_slice = all_season_buttons[i:i + btns_per_row]
+        s_cols = st.columns(len(row_slice))
+        for j, s_label in enumerate(row_slice):
+            if s_label == "All Seasons":
+                is_active = (len(st.session_state.selected_seasons) == 0)
+                if s_cols[j].button(
+                    "All Seasons",
+                    key=f"season_btn_{state_prefix}_ALL",
+                    type="primary" if is_active else "secondary"
+                ):
+                    st.session_state.selected_seasons = []
+                    st.rerun()
+            else:
+                is_active = (s_label in st.session_state.selected_seasons)
+                btn_text = f"✓ {s_label}" if is_active else s_label
+                if s_cols[j].button(
+                    btn_text,
+                    key=f"season_btn_{state_prefix}_{s_label}",
+                    type="primary" if is_active else "secondary"
+                ):
+                    if is_active:
+                        st.session_state.selected_seasons.remove(s_label)
+                    else:
+                        st.session_state.selected_seasons.append(s_label)
+                    st.rerun()
+else:
+    st.info("No values found in the `Season` column for this dataset.")
+
 st.markdown('</div>', unsafe_allow_html=True)
 
+# Apply Course filter
 if st.session_state.selected_course_btn == "All Courses":
     filtered_df = full_df.copy()
 else:
     filtered_df = full_df[full_df["_Programme"].astype(str).str.strip() == st.session_state.selected_course_btn].copy()
 
+# Apply Multi-Select Season filter
+if st.session_state.selected_seasons:
+    filtered_df = filtered_df[
+        filtered_df["_Admission_Cycle"].astype(str).str.strip().isin(st.session_state.selected_seasons)
+    ].copy()
+
 # ---------------- TOP KPI SUMMARY ----------------
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("Selected Course Filter", st.session_state.selected_course_btn)
-k2.metric("Students in View", f"{len(filtered_df):,}")
+k1.metric("Selected Course", st.session_state.selected_course_btn)
+k2.metric("Selected Season(s)", active_seasons_label)
+k3.metric("Students in View", f"{len(filtered_df):,}")
 
 kerala_pct = (filtered_df["_Geographical_Profile"] == "Students from Kerala").mean() * 100 if len(filtered_df) > 0 else 0.0
-k3.metric("Students from Kerala", f"{kerala_pct:.1f}%")
-
-wp_pct = (filtered_df["_Work_Status"] == "Working Professional").mean() * 100 if len(filtered_df) > 0 else 0.0
-k4.metric("Working Professionals", f"{wp_pct:.1f}%")
+k4.metric("Students from Kerala", f"{kerala_pct:.1f}%")
 
 # ==============================================================================
 # ALL 7 CATEGORIES RENDERED AS CHARTS
