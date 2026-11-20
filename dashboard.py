@@ -27,7 +27,7 @@ st.markdown("""
         border-radius: 8px;
         font-size: 1.1rem;
         font-weight: 700;
-        margin-top: 1.2rem;
+        margin-top: 1.3rem;
         margin-bottom: 0.8rem;
     }
     .slicer-box {
@@ -42,13 +42,12 @@ st.markdown("""
 
 # ---------------- EXACT RAW DATA COLUMN CANDIDATES ----------------
 RAW_DATA_SCHEMA = {
-    # Admission Profile (exact columns requested)
+    "Program Type": ["Program Type"],
     "Programme": ["Course", "Interested Program", "Intersted Course", "Course Enquired", "Academic Name"],
     "Specialisation": ["Specialization", "Specialisation"],
     "Batch": ["Year"],
     "Admission Cycle": ["Season"],
 
-    # Academic Background
     "UG Degree": [
         "UG Degree - Name of Examination",
         "UG Program - Name of Examination",
@@ -85,7 +84,6 @@ RAW_DATA_SCHEMA = {
         "Xth Details - Percentage"
     ],
 
-    # Professional Background
     "Fresher or Working Professional": ["Do you have any Work Experience"],
     "Years of Work Experience": [
         "Work Experience 1 - Experience Years",
@@ -105,15 +103,13 @@ RAW_DATA_SCHEMA = {
         "Work Experience 3 - Designation"
     ],
 
-    # Demographic Profile
     "Age Group": ["Age group", "Age", "Date of Birth", "UGC Date Of Birth"],
     "Gender": ["Gender", "UGC Gender"],
     "State": ["State", "State P", "State C", "State I", "12th Details - 12th Standard State"],
     "Country": ["Country", "Country P", "Country C", "Country residing in", "Country currently residing in"],
 
-    # Entry Qualification
     "Relevant Degree": ["Highest Qualification", "UG Degree - Name of Examination", "UG Program - Name of Examination"],
-    "Lateral Entry": ["Program Type", "Application Stage", "Course"],
+    "Lateral Entry": ["Application Stage", "Course"],
     "Academic Eligibility": ["Document Verification", "Application Stage", "Eligible for scholarship"]
 }
 
@@ -198,29 +194,40 @@ def is_certificate_program(val):
     v = str(val).strip().lower()
     return any(tok in v for tok in ["certificate", "cert ", " cert", "certification"])
 
+def normalize_program_type(val):
+    if val is None or pd.isna(val):
+        return "Unspecified"
+    v = str(val).strip()
+    v_low = v.lower()
+    if not v_low or v_low in INVALID_TOKENS:
+        return "Unspecified"
+    if v_low in ["ug", "undergraduate", "under graduate", "bachelor", "bachelors", "u.g."]:
+        return "UG"
+    if v_low in ["pg", "postgraduate", "post graduate", "post-graduate", "master", "masters", "p.g."]:
+        return "PG"
+    if "under" in v_low or "ug" in v_low.split():
+        return "UG"
+    if "post" in v_low or "pg" in v_low.split():
+        return "PG"
+    return v
+
 # ---------------- BUILD ALL 7 CATEGORY METRICS FROM RAW DATA ----------------
 def build_dashboard_dataset(raw_df, custom_overrides=None):
     df = raw_df.reset_index(drop=True).copy()
     custom_overrides = custom_overrides or {}
 
-    def get_series(metric_name, preserve_exact_text=False):
+    def get_raw_series(metric_name, preserve_exact_text=False):
         override_col = custom_overrides.get(metric_name)
         if override_col and override_col in df.columns and override_col != "Auto (Recommended)":
             return clean_val_series(df[override_col], index=df.index, preserve_exact_text=preserve_exact_text)
         return coalesce_columns(df, RAW_DATA_SCHEMA.get(metric_name, []), preserve_exact_text=preserve_exact_text)
 
     # Filter out Certificate Programs based on Course / Program Type
-    prog_raw = get_series("Programme", preserve_exact_text=True)
-    col_lookup = {str(c).strip().lower(): c for c in df.columns}
-    prog_type_col = col_lookup.get("program type")
-    prog_type_vals = (
-        clean_val_series(df[prog_type_col], index=df.index, preserve_exact_text=True).tolist()
-        if prog_type_col is not None
-        else [None] * len(df)
-    )
+    prog_raw = get_raw_series("Programme", preserve_exact_text=True)
+    prog_type_raw = get_raw_series("Program Type", preserve_exact_text=True)
 
     keep_mask = [
-        not (is_certificate_program(prog_raw.iloc[i]) or is_certificate_program(prog_type_vals[i]))
+        not (is_certificate_program(prog_raw.iloc[i]) or is_certificate_program(prog_type_raw.iloc[i]))
         for i in range(len(df))
     ]
     df = df.loc[keep_mask].reset_index(drop=True)
@@ -232,7 +239,15 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
             return clean_val_series(df[override_col], index=df.index, preserve_exact_text=preserve_exact_text)
         return coalesce_columns(df, RAW_DATA_SCHEMA.get(metric_name, []), preserve_exact_text=preserve_exact_text)
 
-    # 1. ADMISSION PROFILE (exact values from Course, Specialization, Year, Season)
+    # UG & PG Segregation from Program Type column
+    pt_series = get_filtered_series("Program Type", preserve_exact_text=True)
+    df["_Program_Type"] = pd.Series(
+        [normalize_program_type(v) for v in pt_series.tolist()],
+        index=df.index,
+        dtype=object
+    )
+
+    # ADMISSION PROFILE (exact values from Course, Specialization, Year, Season)
     prog_s = get_filtered_series("Programme", preserve_exact_text=True)
     df["_Programme"] = pd.Series([v if v is not None else "Unspecified Course" for v in prog_s.tolist()], index=df.index, dtype=object)
 
@@ -245,7 +260,7 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
     cycle_s = get_filtered_series("Admission Cycle", preserve_exact_text=True)
     df["_Admission_Cycle"] = pd.Series([v if v is not None else None for v in cycle_s.tolist()], index=df.index, dtype=object)
 
-    # 2. ACADEMIC BACKGROUND
+    # ACADEMIC BACKGROUND
     df["_UG_Degree"] = get_filtered_series("UG Degree")
     df["_Discipline"] = get_filtered_series("Discipline")
     df["_University"] = get_filtered_series("University")
@@ -279,7 +294,6 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
 
     df["_Stream"] = pd.Series([classify_stream(v) for v in stream_raw_list], index=df.index, dtype=object)
 
-    # Percentage / CGPA calculation
     pct_series = pd.to_numeric(get_filtered_series("Percentage / CGPA"), errors="coerce")
     for m_col, max_col in [
         ("UG Degree - Marks Obtained", "UG Degree - Maximum Mark"),
@@ -312,7 +326,7 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
 
     df["_Percentage_CGPA"] = pd.Series([bracket_score(v) for v in pct_series.tolist()], index=df.index, dtype=object)
 
-    # 3. PROFESSIONAL BACKGROUND
+    # PROFESSIONAL BACKGROUND
     total_exp = pd.Series(0.0, index=df.index)
     for i in range(1, 5):
         y_col = f"Work Experience {i} - Experience Years"
@@ -404,7 +418,7 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
 
     df["_Industry"] = pd.Series(industry_final, index=df.index, dtype=object)
 
-    # 4. DEMOGRAPHIC PROFILE
+    # DEMOGRAPHIC PROFILE
     raw_age_grp = clean_val_series(df["Age group"], index=df.index).tolist() if "Age group" in df.columns else [None] * n_rows
     raw_age_num = pd.to_numeric(clean_val_series(df["Age"], index=df.index), errors="coerce") if "Age" in df.columns else pd.Series(np.nan, index=df.index)
 
@@ -441,7 +455,7 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
     country_s = get_filtered_series("Country").tolist()
     df["_Country"] = pd.Series([str(v).title() if v is not None else None for v in country_s], index=df.index, dtype=object)
 
-    # 5. ENTRY QUALIFICATION
+    # ENTRY QUALIFICATION
     df["_Relevant_Degree"] = get_filtered_series("Relevant Degree")
 
     lat_list = get_filtered_series("Lateral Entry").tolist()
@@ -465,7 +479,7 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
 
     df["_Academic_Eligibility"] = pd.Series(elig_final, index=df.index, dtype=object)
 
-    # 6. CAREER PROFILE
+    # CAREER PROFILE
     stream_list = df["_Stream"].tolist()
     course_list = df["_Programme"].tolist()
     career_final = []
@@ -487,7 +501,7 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
 
     df["_Career_Profile"] = pd.Series(career_final, index=df.index, dtype=object)
 
-    # 7. GEOGRAPHICAL PROFILE
+    # GEOGRAPHICAL PROFILE
     nri_list = clean_val_series(df["Are you a NRI"], index=df.index).tolist() if "Are you a NRI" in df.columns else [None] * n_rows
     outside_list = clean_val_series(df["Are you residing outside INDIA"], index=df.index).tolist() if "Are you residing outside INDIA" in df.columns else [None] * n_rows
     st_clean_list = df["_State"].tolist()
@@ -513,7 +527,7 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
 
     return df
 
-# ---------------- CHART RENDERER ----------------
+# ---------------- CHART RENDERERS ----------------
 def plot_metric_chart(df, col_name, title, style="bar", palette=px.colors.qualitative.Bold):
     if col_name not in df.columns:
         st.info(f"No column available for **{title}**.")
@@ -561,6 +575,16 @@ def plot_metric_chart(df, col_name, title, style="bar", palette=px.colors.qualit
     )
     st.plotly_chart(fig, use_container_width=True)
 
+def plot_ug_pg_segregation(df, section_label):
+    """Renders UG vs PG segregation from Program Type for any section."""
+    plot_metric_chart(
+        df,
+        "_Program_Type",
+        f"UG vs PG Segregation — {section_label} (Program Type)",
+        style="donut",
+        palette=["#2563eb", "#f59e0b", "#10b981", "#8b5cf6"]
+    )
+
 # ---------------- MAIN GUI UPLOADER & SHEET SELECTOR ----------------
 st.title("📊 Student Profile & Course Analytics Dashboard")
 
@@ -600,7 +624,7 @@ except Exception as e:
 state_prefix = f"{uploaded_file.name}_{active_sheet_name}"
 custom_overrides = {}
 with st.expander("⚙️ Optional: Override Specific Column Mappings (Pre-configured for 'raw data' schema)", expanded=False):
-    st.caption("By default, Admission Profile pulls exact values from Course, Specialization, Year, and Season, and excludes Certificate programs.")
+    st.caption("By default, UG/PG pulls from Program Type, Admission Profile pulls from Course, Specialization, Year, and Season, and Certificate programs are excluded.")
     override_options = ["Auto (Recommended)"] + list(raw_df.columns)
     o_cols = st.columns(4)
     for idx, metric_key in enumerate(RAW_DATA_SCHEMA.keys()):
@@ -615,12 +639,15 @@ with st.expander("⚙️ Optional: Override Specific Column Mappings (Pre-config
 # Build processed dataframe
 full_df = build_dashboard_dataset(raw_df, custom_overrides)
 
-# ---------------- COURSE & MULTI-SELECT SEASON BUTTON SLICERS ----------------
+# ---------------- SLICERS: COURSE, SEASON (MULTI-SELECT), PROGRAM TYPE (UG/PG) ----------------
 if "selected_course_btn" not in st.session_state:
     st.session_state.selected_course_btn = "All Courses"
 
 if "selected_seasons" not in st.session_state:
     st.session_state.selected_seasons = []
+
+if "selected_prog_type_btn" not in st.session_state:
+    st.session_state.selected_prog_type_btn = "All (UG & PG)"
 
 course_values = sorted([
     str(c).strip() for c in full_df["_Programme"].dropna().unique()
@@ -636,6 +663,14 @@ season_values = sorted([
     if str(s).strip() not in ["", "nan", "None"]
 ])
 st.session_state.selected_seasons = [s for s in st.session_state.selected_seasons if s in season_values]
+
+pt_values = sorted([
+    str(p).strip() for p in full_df["_Program_Type"].dropna().unique()
+    if str(p).strip() not in ["", "nan", "None"]
+])
+prog_type_buttons = ["All (UG & PG)"] + pt_values
+if st.session_state.selected_prog_type_btn not in prog_type_buttons:
+    st.session_state.selected_prog_type_btn = "All (UG & PG)"
 
 st.markdown('<div class="slicer-box">', unsafe_allow_html=True)
 
@@ -692,6 +727,21 @@ if season_values:
 else:
     st.info("No values found in the `Season` column for this dataset.")
 
+st.markdown("---")
+
+# 3. UG / PG Quick Filter Buttons (from Program Type column)
+st.markdown("##### 🎓 Program Type Quick Filter (UG / PG from `Program Type`)")
+pt_cols = st.columns(len(prog_type_buttons))
+for idx, pt_label in enumerate(prog_type_buttons):
+    is_active = (st.session_state.selected_prog_type_btn == pt_label)
+    if pt_cols[idx].button(
+        pt_label,
+        key=f"pt_btn_{state_prefix}_{pt_label}",
+        type="primary" if is_active else "secondary"
+    ):
+        st.session_state.selected_prog_type_btn = pt_label
+        st.rerun()
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Apply Course filter
@@ -706,87 +756,117 @@ if st.session_state.selected_seasons:
         filtered_df["_Admission_Cycle"].astype(str).str.strip().isin(st.session_state.selected_seasons)
     ].copy()
 
+# Apply Program Type filter if selected
+if st.session_state.selected_prog_type_btn != "All (UG & PG)":
+    filtered_df = filtered_df[
+        filtered_df["_Program_Type"].astype(str).str.strip() == st.session_state.selected_prog_type_btn
+    ].copy()
+
 # ---------------- TOP KPI SUMMARY ----------------
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Selected Course", st.session_state.selected_course_btn)
 k2.metric("Selected Season(s)", active_seasons_label)
-k3.metric("Students in View", f"{len(filtered_df):,}")
-
-kerala_pct = (filtered_df["_Geographical_Profile"] == "Students from Kerala").mean() * 100 if len(filtered_df) > 0 else 0.0
-k4.metric("Students from Kerala", f"{kerala_pct:.1f}%")
+k3.metric("Program Type Filter", st.session_state.selected_prog_type_btn)
+k4.metric("Students in View", f"{len(filtered_df):,}")
 
 # ==============================================================================
-# ALL 7 CATEGORIES RENDERED AS CHARTS
+# ALL 7 SECTIONS (ADMISSION PROFILE MOVED TO SECTION 1; UG/PG IN EVERY SECTION)
 # ==============================================================================
 
-# 1. ACADEMIC BACKGROUND
-st.markdown('<div class="category-banner">1. Academic Background (UG Degree, Discipline, Stream, University, Percentage / CGPA)</div>', unsafe_allow_html=True)
-ac1, ac2, ac3 = st.columns(3)
-with ac1:
-    plot_metric_chart(filtered_df, "_UG_Degree", "UG Degree Distribution", "bar", px.colors.qualitative.Prism)
-with ac2:
-    plot_metric_chart(filtered_df, "_Discipline", "UG Discipline / Branch Breakdown", "hbar", px.colors.qualitative.Prism)
-with ac3:
-    plot_metric_chart(filtered_df, "_Stream", "Academic Stream", "donut", px.colors.qualitative.Prism)
-
-ac4, ac5 = st.columns(2)
-with ac4:
-    plot_metric_chart(filtered_df, "_University", "University / Board (Top 12)", "hbar", px.colors.qualitative.Prism)
-with ac5:
-    plot_metric_chart(filtered_df, "_Percentage_CGPA", "Percentage / CGPA Brackets", "bar", px.colors.qualitative.Prism)
-
-# 2. PROFESSIONAL BACKGROUND
-st.markdown('<div class="category-banner">2. Professional Background (Fresher vs Working Professional, Years of Experience, Industry, Job Role)</div>', unsafe_allow_html=True)
-pr1, pr2 = st.columns(2)
-with pr1:
-    plot_metric_chart(filtered_df, "_Work_Status", "Fresher vs Working Professional", "donut", px.colors.qualitative.Safe)
-    plot_metric_chart(filtered_df, "_Industry", "Industry / Organization Breakdown", "hbar", px.colors.qualitative.Safe)
-with pr2:
-    plot_metric_chart(filtered_df, "_Work_Exp_Years", "Years of Work Experience", "bar", px.colors.qualitative.Safe)
-    plot_metric_chart(filtered_df, "_Job_Role", "Job Role / Designation", "hbar", px.colors.qualitative.Safe)
-
-# 3. DEMOGRAPHIC PROFILE
-st.markdown('<div class="category-banner">3. Demographic Profile (Age Group, Gender, State, Country)</div>', unsafe_allow_html=True)
-dm1, dm2 = st.columns(2)
-with dm1:
-    plot_metric_chart(filtered_df, "_Age_Group", "Age Group Distribution", "bar", px.colors.qualitative.Vivid)
-    plot_metric_chart(filtered_df, "_State", "State Distribution (Top 12)", "hbar", px.colors.qualitative.Vivid)
-with dm2:
-    plot_metric_chart(filtered_df, "_Gender", "Gender Split", "donut", px.colors.qualitative.Vivid)
-    plot_metric_chart(filtered_df, "_Country", "Country Distribution", "hbar", px.colors.qualitative.Vivid)
-
-# 4. ADMISSION PROFILE
-st.markdown('<div class="category-banner">4. Admission Profile (Programme, Specialisation, Batch, Admission Cycle)</div>', unsafe_allow_html=True)
-ad1, ad2 = st.columns(2)
-with ad1:
+# SECTION 1: ADMISSION PROFILE (Moved from 4th to 1st)
+st.markdown('<div class="category-banner">1. Admission Profile (UG/PG Segregation, Programme, Specialisation, Batch, Admission Cycle)</div>', unsafe_allow_html=True)
+s1_top1, s1_top2 = st.columns(2)
+with s1_top1:
+    plot_ug_pg_segregation(filtered_df, "Admission Profile")
+with s1_top2:
     plot_metric_chart(filtered_df, "_Programme", "Programme (Course)", "bar", px.colors.qualitative.Bold)
-    plot_metric_chart(filtered_df, "_Batch", "Batch (Year)", "bar", px.colors.qualitative.Bold)
-with ad2:
+
+s1_bot1, s1_bot2, s1_bot3 = st.columns(3)
+with s1_bot1:
     plot_metric_chart(filtered_df, "_Specialisation", "Specialisation (Specialization)", "hbar", px.colors.qualitative.Bold)
+with s1_bot2:
+    plot_metric_chart(filtered_df, "_Batch", "Batch (Year)", "bar", px.colors.qualitative.Bold)
+with s1_bot3:
     plot_metric_chart(filtered_df, "_Admission_Cycle", "Admission Cycle (Season)", "donut", px.colors.qualitative.Bold)
 
-# 5. ENTRY QUALIFICATION
-st.markdown('<div class="category-banner">5. Entry Qualification (Relevant Degree, Lateral Entry, Academic Eligibility)</div>', unsafe_allow_html=True)
-eq1, eq2, eq3 = st.columns(3)
-with eq1:
+# SECTION 2: ACADEMIC BACKGROUND
+st.markdown('<div class="category-banner">2. Academic Background (UG/PG Segregation, UG Degree, Discipline, Stream, University, Percentage / CGPA)</div>', unsafe_allow_html=True)
+s2_r1_1, s2_r1_2, s2_r1_3 = st.columns(3)
+with s2_r1_1:
+    plot_ug_pg_segregation(filtered_df, "Academic Background")
+with s2_r1_2:
+    plot_metric_chart(filtered_df, "_UG_Degree", "UG Degree Distribution", "bar", px.colors.qualitative.Prism)
+with s2_r1_3:
+    plot_metric_chart(filtered_df, "_Discipline", "UG Discipline / Branch Breakdown", "hbar", px.colors.qualitative.Prism)
+
+s2_r2_1, s2_r2_2, s2_r2_3 = st.columns(3)
+with s2_r2_1:
+    plot_metric_chart(filtered_df, "_Stream", "Academic Stream", "donut", px.colors.qualitative.Prism)
+with s2_r2_2:
+    plot_metric_chart(filtered_df, "_University", "University / Board (Top 12)", "hbar", px.colors.qualitative.Prism)
+with s2_r2_3:
+    plot_metric_chart(filtered_df, "_Percentage_CGPA", "Percentage / CGPA Brackets", "bar", px.colors.qualitative.Prism)
+
+# SECTION 3: PROFESSIONAL BACKGROUND
+st.markdown('<div class="category-banner">3. Professional Background (UG/PG Segregation, Fresher vs Working, Experience, Industry, Job Role)</div>', unsafe_allow_html=True)
+s3_r1_1, s3_r1_2, s3_r1_3 = st.columns(3)
+with s3_r1_1:
+    plot_ug_pg_segregation(filtered_df, "Professional Background")
+with s3_r1_2:
+    plot_metric_chart(filtered_df, "_Work_Status", "Fresher vs Working Professional", "donut", px.colors.qualitative.Safe)
+with s3_r1_3:
+    plot_metric_chart(filtered_df, "_Work_Exp_Years", "Years of Work Experience", "bar", px.colors.qualitative.Safe)
+
+s3_r2_1, s3_r2_2 = st.columns(2)
+with s3_r2_1:
+    plot_metric_chart(filtered_df, "_Industry", "Industry / Organization Breakdown", "hbar", px.colors.qualitative.Safe)
+with s3_r2_2:
+    plot_metric_chart(filtered_df, "_Job_Role", "Job Role / Designation", "hbar", px.colors.qualitative.Safe)
+
+# SECTION 4: DEMOGRAPHIC PROFILE
+st.markdown('<div class="category-banner">4. Demographic Profile (UG/PG Segregation, Age Group, Gender, State, Country)</div>', unsafe_allow_html=True)
+s4_r1_1, s4_r1_2, s4_r1_3 = st.columns(3)
+with s4_r1_1:
+    plot_ug_pg_segregation(filtered_df, "Demographic Profile")
+with s4_r1_2:
+    plot_metric_chart(filtered_df, "_Age_Group", "Age Group Distribution", "bar", px.colors.qualitative.Vivid)
+with s4_r1_3:
+    plot_metric_chart(filtered_df, "_Gender", "Gender Split", "donut", px.colors.qualitative.Vivid)
+
+s4_r2_1, s4_r2_2 = st.columns(2)
+with s4_r2_1:
+    plot_metric_chart(filtered_df, "_State", "State Distribution (Top 12)", "hbar", px.colors.qualitative.Vivid)
+with s4_r2_2:
+    plot_metric_chart(filtered_df, "_Country", "Country Distribution", "hbar", px.colors.qualitative.Vivid)
+
+# SECTION 5: ENTRY QUALIFICATION
+st.markdown('<div class="category-banner">5. Entry Qualification (UG/PG Segregation, Relevant Degree, Lateral Entry, Academic Eligibility)</div>', unsafe_allow_html=True)
+s5_1, s5_2, s5_3, s5_4 = st.columns(4)
+with s5_1:
+    plot_ug_pg_segregation(filtered_df, "Entry Qualification")
+with s5_2:
     plot_metric_chart(filtered_df, "_Relevant_Degree", "Qualification / Relevant Degree", "hbar", px.colors.qualitative.Pastel)
-with eq2:
+with s5_3:
     plot_metric_chart(filtered_df, "_Lateral_Entry", "Lateral Entry vs Regular", "donut", px.colors.qualitative.Pastel)
-with eq3:
+with s5_4:
     plot_metric_chart(filtered_df, "_Academic_Eligibility", "Academic Eligibility Status", "bar", px.colors.qualitative.Pastel)
 
-# 6. CAREER PROFILE
-st.markdown('<div class="category-banner">6. Career Profile (Currently Employed, Self-Employed, Unemployed, Career Switcher)</div>', unsafe_allow_html=True)
-cp1, cp2 = st.columns(2)
-with cp1:
+# SECTION 6: CAREER PROFILE
+st.markdown('<div class="category-banner">6. Career Profile (UG/PG Segregation, Currently Employed, Self-Employed, Unemployed, Career Switcher)</div>', unsafe_allow_html=True)
+s6_1, s6_2, s6_3 = st.columns(3)
+with s6_1:
+    plot_ug_pg_segregation(filtered_df, "Career Profile")
+with s6_2:
     plot_metric_chart(filtered_df, "_Career_Profile", "Career Profile Count", "bar", px.colors.qualitative.Set2)
-with cp2:
+with s6_3:
     plot_metric_chart(filtered_df, "_Career_Profile", "Career Profile Share (%)", "donut", px.colors.qualitative.Set2)
 
-# 7. GEOGRAPHICAL PROFILE
-st.markdown('<div class="category-banner">7. Geographical Profile (Students from Kerala, Other Indian States & International Locations)</div>', unsafe_allow_html=True)
-gp1, gp2 = st.columns(2)
-with gp1:
+# SECTION 7: GEOGRAPHICAL PROFILE
+st.markdown('<div class="category-banner">7. Geographical Profile (UG/PG Segregation, Kerala, Other Indian States & International Locations)</div>', unsafe_allow_html=True)
+s7_1, s7_2, s7_3 = st.columns(3)
+with s7_1:
+    plot_ug_pg_segregation(filtered_df, "Geographical Profile")
+with s7_2:
     plot_metric_chart(filtered_df, "_Geographical_Profile", "Kerala vs Other Indian States vs International (Share)", "donut", px.colors.qualitative.G10)
-with gp2:
+with s7_3:
     plot_metric_chart(filtered_df, "_Geographical_Profile", "Kerala vs Other Indian States vs International (Count)", "bar", px.colors.qualitative.G10)
