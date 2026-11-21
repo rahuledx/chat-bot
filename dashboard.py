@@ -1,3 +1,4 @@
+import re
 import datetime
 import streamlit as st
 import pandas as pd
@@ -113,10 +114,13 @@ RAW_DATA_SCHEMA = {
     "Academic Eligibility": ["Document Verification", "Application Stage", "Eligible for scholarship"]
 }
 
-# ---------------- PYTHON 3.13 / NUMPY 2.x SAFE HELPERS ----------------
+# ---------------- PYTHON 3.13+ / NUMPY 2.x SAFE HELPERS ----------------
 INVALID_TOKENS = {"", "nan", "nat", "none", "null", "na", "n/a", "-", "--", "0.0", "nil", "<na>"}
 
-def clean_val_series(s, index=None, preserve_exact_text=False):
+def collapse_spaces(text):
+    return re.sub(r"\s+", " ", str(text).strip())
+
+def clean_val_series(s, index=None):
     """Safely converts any Series to a pure Python object Series with None for missing values."""
     if s is None:
         return pd.Series([None] * (len(index) if index is not None else 0), index=index, dtype=object)
@@ -137,16 +141,16 @@ def clean_val_series(s, index=None, preserve_exact_text=False):
                 continue
             s_val = str(int(val)) if float(val).is_integer() else str(round(float(val), 2))
         else:
-            s_val = str(val).strip()
+            s_val = collapse_spaces(val)
 
         if s_val.lower() in INVALID_TOKENS:
             cleaned_list.append(None)
         else:
-            cleaned_list.append(s_val if preserve_exact_text else s_val)
+            cleaned_list.append(s_val)
 
     return pd.Series(cleaned_list, index=s.index, dtype=object)
 
-def coalesce_columns(df, candidate_cols, preserve_exact_text=False):
+def coalesce_columns(df, candidate_cols):
     """Fills missing values across candidate columns using pure object Series."""
     result = pd.Series([None] * len(df), index=df.index, dtype=object)
     col_lookup = {str(c).strip().lower(): c for c in df.columns}
@@ -154,7 +158,7 @@ def coalesce_columns(df, candidate_cols, preserve_exact_text=False):
     for cand in candidate_cols:
         actual_col = col_lookup.get(cand.strip().lower())
         if actual_col is not None:
-            cleaned = clean_val_series(df[actual_col], index=df.index, preserve_exact_text=preserve_exact_text)
+            cleaned = clean_val_series(df[actual_col], index=df.index)
             mask = result.isna()
             if mask.any():
                 result.loc[mask] = cleaned.loc[mask]
@@ -194,37 +198,428 @@ def is_certificate_program(val):
     v = str(val).strip().lower()
     return any(tok in v for tok in ["certificate", "cert ", " cert", "certification"])
 
+# ---------------- STANDARDIZATION / MERGING FUNCTIONS ACROSS ALL CHARTS ----------------
 def normalize_program_type(val):
     if val is None or pd.isna(val):
         return "Unspecified"
-    v = str(val).strip()
+    v = collapse_spaces(val)
     v_low = v.lower()
     if not v_low or v_low in INVALID_TOKENS:
         return "Unspecified"
-    if v_low in ["ug", "undergraduate", "under graduate", "bachelor", "bachelors", "u.g."]:
+    if v_low in ["ug", "undergraduate", "under graduate", "bachelor", "bachelors", "u.g.", "u.g"] or "under" in v_low:
         return "UG"
-    if v_low in ["pg", "postgraduate", "post graduate", "post-graduate", "master", "masters", "p.g."]:
-        return "PG"
-    if "under" in v_low or "ug" in v_low.split():
-        return "UG"
-    if "post" in v_low or "pg" in v_low.split():
+    if v_low in ["pg", "postgraduate", "post graduate", "post-graduate", "master", "masters", "p.g.", "p.g"] or "post" in v_low:
         return "PG"
     return v
+
+def normalize_course_name(val):
+    """Unifies Course / Programme naming variants (e.g., BCom/B.Com, MBA/M.B.A., BE/B.Tech)."""
+    if val is None or pd.isna(val):
+        return "Unspecified Course"
+    s = collapse_spaces(val)
+    if not s or s.lower() in INVALID_TOKENS:
+        return "Unspecified Course"
+
+    # Combine BE / B.Tech variants into a single label
+    if re.fullmatch(r"(?i)(b\.?\s*e\.?|b\.?\s*tech\.?|b\.?\s*e\.?\s*/\s*b\.?\s*tech\.?|bachelor of engineering|bachelor of technology)", s):
+        return "B.E. / B.Tech"
+    if re.fullmatch(r"(?i)(m\.?\s*e\.?|m\.?\s*tech\.?|m\.?\s*e\.?\s*/\s*m\.?\s*tech\.?|master of engineering|master of technology)", s):
+        return "M.E. / M.Tech"
+
+    # Standardize degree acronyms inside course names while preserving any extra suffix
+    replacements = [
+        (r"(?i)\bm\.?\s*b\.?\s*a\.?\b", "MBA"),
+        (r"(?i)\bm\.?\s*c\.?\s*a\.?\b", "MCA"),
+        (r"(?i)\bm\.?\s*com\.?\b", "M.Com"),
+        (r"(?i)\bm\.?\s*sc\.?\b", "M.Sc"),
+        (r"(?i)\bb\.?\s*b\.?\s*a\.?\b", "BBA"),
+        (r"(?i)\bb\.?\s*c\.?\s*a\.?\b", "BCA"),
+        (r"(?i)\bb\.?\s*com\.?\b", "B.Com"),
+        (r"(?i)\bb\.?\s*sc\.?\b", "B.Sc"),
+        (r"(?i)\bb\.?\s*tech\.?\b", "B.E. / B.Tech"),
+        (r"(?i)\bm\.?\s*tech\.?\b", "M.E. / M.Tech"),
+        (r"(?i)\bmaster of business administration\b", "MBA"),
+        (r"(?i)\bmaster of computer applications?\b", "MCA"),
+        (r"(?i)\bmaster of commerce\b", "M.Com"),
+        (r"(?i)\bbachelor of business administration\b", "BBA"),
+        (r"(?i)\bbachelor of computer applications?\b", "BCA"),
+        (r"(?i)\bbachelor of commerce\b", "B.Com"),
+    ]
+    out = s
+    for pat, repl in replacements:
+        out = re.sub(pat, repl, out)
+    out = re.sub(r"\s*[-–—]\s*", " - ", out)
+    return collapse_spaces(out)
+
+def normalize_specialisation(val):
+    if val is None or pd.isna(val):
+        return "Not Specified"
+    s = collapse_spaces(val)
+    low = s.lower()
+    if not low or low in INVALID_TOKENS:
+        return "Not Specified"
+
+    if low in ["general", "general management", "gen", "none", "no specialization", "no specialisation"]:
+        return "General"
+    if any(k in low for k in ["human resource", "hr management"]) or low == "hr":
+        return "Human Resources (HR)"
+    if "cyber" in low and "security" in low:
+        return "Cyber Security"
+    if "fintech" in low or "fin tech" in low or "financial technology" in low:
+        return "FinTech"
+    if ("artificial intelligence" in low or re.search(r"\bai\b", low)) and "data" in low:
+        return "AI & Data Science"
+    if "artificial intelligence" in low or low == "ai":
+        return "Artificial Intelligence"
+    if "data science" in low:
+        return "Data Science"
+    if "data analytics" in low or "business analytics" in low:
+        return "Business / Data Analytics"
+    if "international finance" in low or "acca" in low:
+        return "International Finance & Accounting"
+    if low in ["finance", "financial management"]:
+        return "Finance"
+    if low in ["marketing", "marketing management"]:
+        return "Marketing"
+    if low in ["operations", "operations management"]:
+        return "Operations Management"
+    return s.title() if s.islower() or s.isupper() else s
+
+def normalize_degree(val):
+    """Merges equivalent UG/PG/School degree entries (e.g., BE & B.Tech -> B.E. / B.Tech)."""
+    if val is None or pd.isna(val):
+        return None
+    s = collapse_spaces(val)
+    low = s.lower()
+    if not low or low in INVALID_TOKENS:
+        return None
+
+    # Remove dots/extra punctuation for clean token checks
+    compact = re.sub(r"[.\(\)\[\],\-/]+", " ", low)
+    compact = collapse_spaces(compact)
+
+    # 1. Engineering UG: BE + B.Tech together
+    if (
+        re.search(r"\bb\s*tech\b|\bbtech\b|\bbachelor of technology\b|\bbachelor of engineering\b", compact)
+        or re.search(r"\bb\s*e\b", compact)
+        or re.fullmatch(r"be(\s+.*)?", compact)
+        and not compact.startswith("bed")
+    ):
+        # Guard against English phrase "to be"
+        if not re.search(r"\bto\s+be\b", compact):
+            return "B.E. / B.Tech"
+
+    # 2. Engineering PG: ME + M.Tech together
+    if (
+        re.search(r"\bm\s*tech\b|\bmtech\b|\bmaster of technology\b|\bmaster of engineering\b", compact)
+        or re.fullmatch(r"m\s*e(\s+.*)?", compact)
+    ):
+        return "M.E. / M.Tech"
+
+    # 3. Computer Applications
+    if re.search(r"\bb\s*c\s*a\b|\bbachelor of computer application", compact):
+        return "BCA"
+    if re.search(r"\bm\s*c\s*a\b|\bmaster of computer application", compact):
+        return "MCA"
+
+    # 4. Business & Management
+    if re.search(r"\bm\s*b\s*a\b|\bmaster of business administration\b", compact):
+        return "MBA"
+    if re.search(r"\bpgdm\b|\bpgdba\b|\bpost graduate diploma\b|\bpg diploma\b", compact):
+        return "PGDM / PG Diploma"
+    if re.search(r"\bb\s*b\s*a\b|\bbachelor of business administration\b", compact):
+        return "BBA"
+    if re.search(r"\bb\s*b\s*m\b|\bb\s*m\s*s\b|\bbachelor of business management\b|\bbachelor of management", compact):
+        return "BBM / BMS"
+
+    # 5. Commerce
+    if re.search(r"\bb\s*com\b|\bbcom\b|\bbachelor of commerce\b", compact):
+        return "B.Com"
+    if re.search(r"\bm\s*com\b|\bmcom\b|\bmaster of commerce\b", compact):
+        return "M.Com"
+
+    # 6. Science
+    if re.search(r"\bb\s*sc\b|\bbsc\b|\bbachelor of science\b", compact):
+        return "B.Sc"
+    if re.search(r"\bm\s*sc\b|\bmsc\b|\bmaster of science\b", compact):
+        return "M.Sc"
+
+    # 7. Professional & Specialized Degrees
+    if re.search(r"\bb\s*arch\b|\bbarch\b|\bbachelor of architecture\b", compact):
+        return "B.Arch"
+    if re.search(r"\bb\s*pharm\b|\bbpharm\b|\bbachelor of pharmacy\b", compact):
+        return "B.Pharm"
+    if re.search(r"\bm\s*pharm\b|\bmpharm\b|\bmaster of pharmacy\b", compact):
+        return "M.Pharm"
+    if re.search(r"\bb\s*ed\b|\bbed\b|\bbachelor of education\b", compact):
+        return "B.Ed"
+    if re.search(r"\bll\s*b\b|\bbachelor of law", compact):
+        return "LLB"
+    if re.search(r"\bb\s*h\s*m\b|\bhotel management\b|\bhospitality\b", compact):
+        return "BHM / Hospitality"
+    if re.search(r"\bmbbs\b|\bbds\b|\bbams\b|\bbhms\b|\bbpt\b|\bnursing\b", compact):
+        return "Medical / Allied Health"
+    if re.search(r"\bph\s*d\b|\bdoctorate\b", compact):
+        return "Ph.D"
+    if re.search(r"\bb\s*voc\b|\bbvoc\b", compact):
+        return "B.Voc"
+    if re.search(r"\bca\b|\bchartered accountant\b|\bcma\b|\bcs\b|\bacca\b", compact):
+        return "CA / CMA / CS / ACCA"
+
+    # 8. Arts
+    if re.search(r"\bb\s*a\b|\bbachelor of arts\b", compact):
+        return "B.A."
+    if re.search(r"\bm\s*a\b|\bmaster of arts\b", compact):
+        return "M.A."
+
+    # 9. School & Diploma Qualifications
+    if re.search(r"\b12th\b|\bxii\b|\bxiith\b|\bplus two\b|\bplus 2\b|\bhsc\b|\bhse\b|\bdhse\b|\bhigher secondary\b|\bsenior secondary\b|\bintermediate\b|\bpuc\b|\bpre university\b|\bclass 12\b|\bgrade 12\b", compact) or "+2" in low:
+        return "12th / Higher Secondary (+2)"
+    if re.search(r"\bdiploma\b|\bpolytechnic\b", compact):
+        return "Diploma"
+    if re.search(r"\b10th\b|\bsslc\b|\bmatric|\bhigh school\b|\bclass 10\b|\bxth\b", compact) or compact == "x":
+        return "10th / SSLC"
+
+    # 10. Generic Graduate / PG labels
+    if compact in ["ug", "graduate", "graduation", "undergraduate", "under graduate", "degree", "bachelor", "bachelors"]:
+        return "UG Degree (Unspecified)"
+    if compact in ["pg", "post graduate", "postgraduate", "post graduation", "masters", "master"]:
+        return "PG Degree (Unspecified)"
+
+    return s.title() if s.islower() or s.isupper() else s
+
+def normalize_discipline(val):
+    """Merges equivalent branch/discipline names across Engineering, IT, Commerce, Science, Arts."""
+    if val is None or pd.isna(val):
+        return None
+    s = collapse_spaces(val)
+    low = s.lower()
+    if not low or low in INVALID_TOKENS:
+        return None
+    compact = collapse_spaces(re.sub(r"[.\(\)\[\],\-/&]+", " ", low))
+
+    if re.search(r"\bcse\b|\bcomputer science|\bcomp sci\b", compact) or compact == "cs":
+        return "Computer Science & Engineering"
+    if re.search(r"\bcomputer application|\bbca\b|\bmca\b", compact):
+        return "Computer Applications"
+    if re.search(r"\binformation technology\b|\binformation science\b", compact) or compact in ["it", "ise"]:
+        return "Information Technology (IT)"
+    if re.search(r"\bece\b|\belectronics and communication|\belectronics communication|\belectronics telecommunication", compact):
+        return "Electronics & Communication (ECE)"
+    if re.search(r"\beee\b|\belectrical and electronics|\belectrical electronics|\belectrical engineering\b", compact) or compact == "electrical":
+        return "Electrical & Electronics (EEE)"
+    if re.search(r"\bmechanical\b|\bmech\b|\bmechatronics\b|\bautomobile\b|\bproduction eng", compact):
+        return "Mechanical Engineering"
+    if re.search(r"\bcivil\b", compact):
+        return "Civil Engineering"
+    if re.search(r"\bcommerce\b|\bb\s*com\b|\bm\s*com\b", compact):
+        return "Commerce"
+    if re.search(r"\baccount|\bfinance\b|\btaxation\b|\bbanking\b", compact):
+        return "Finance & Accounting"
+    if re.search(r"\bbusiness administration\b|\bmanagement\b|\bbba\b|\bmba\b|\bmarketing\b|\bhuman resource|\bhr\b", compact):
+        return "Business & Management"
+    if re.search(r"\bbiology\b|\bbio maths\b|\bpcb\b|\bpcmb\b|\bbiotech|\bmicrobiology\b|\bzoology\b|\bbotany\b|\blife science", compact):
+        return "Biology & Life Sciences"
+    if re.search(r"\bphysics\b|\bchemistry\b|\bmaths\b|\bmathematics\b|\bpcm\b|\bscience\b|\bstatistics\b", compact):
+        return "Physical Sciences & Mathematics"
+    if re.search(r"\benglish\b|\beconomics\b|\bhistory\b|\bpsychology\b|\bsociology\b|\bhumanities\b|\barts\b|\bpolitical\b|\bjournalism\b", compact):
+        return "Arts & Humanities"
+    if re.search(r"\bdata science\b|\bartificial intelligence\b|\bmachine learning\b|\bcyber\b", compact):
+        return "AI, Data Science & Cyber Security"
+    if re.search(r"\bchemical\b|\baeronautical\b|\baerospace\b|\binstrumentation\b|\bbiomedical\b|\bmarine\b", compact):
+        return "Other Engineering Branches"
+
+    return s.title() if s.islower() or s.isupper() else s
+
+def normalize_university(val):
+    """Unifies common university & board spelling/acronym duplicates."""
+    if val is None or pd.isna(val):
+        return None
+    s = collapse_spaces(val)
+    low = s.lower()
+    if not low or low in INVALID_TOKENS:
+        return None
+    compact = collapse_spaces(re.sub(r"[.\(\)\[\],\-]+", " ", low))
+
+    if "mahatma gandhi" in compact or re.search(r"\bmg university\b|\bm g university\b|\bmgu\b", compact):
+        return "Mahatma Gandhi University (MGU)"
+    if "kerala university" in compact or "university of kerala" in compact:
+        return "University of Kerala"
+    if "calicut" in compact:
+        return "University of Calicut"
+    if "apj" in compact or "abdul kalam" in compact or re.search(r"\bktu\b", compact):
+        return "APJ Abdul Kalam Technological University (KTU)"
+    if "cusat" in compact or "cochin university" in compact:
+        return "CUSAT"
+    if "kannur university" in compact:
+        return "Kannur University"
+    if "anna university" in compact:
+        return "Anna University"
+    if "visvesvaraya" in compact or re.search(r"\bvtu\b", compact):
+        return "VTU"
+    if "bangalore university" in compact or "bengaluru" in compact:
+        return "Bangalore University"
+    if "bharathiar" in compact:
+        return "Bharathiar University"
+    if "madras university" in compact or "university of madras" in compact:
+        return "University of Madras"
+    if "mumbai university" in compact or "university of mumbai" in compact:
+        return "University of Mumbai"
+    if "delhi university" in compact or "university of delhi" in compact:
+        return "University of Delhi"
+    if "ignou" in compact or "indira gandhi national open" in compact:
+        return "IGNOU"
+    if "amrita" in compact:
+        return "Amrita Vishwa Vidyapeetham"
+    if "cbse" in compact or "central board of secondary" in compact:
+        return "CBSE"
+    if "icse" in compact or "isc" in compact or "cisce" in compact:
+        return "ICSE / ISC"
+    if "nios" in compact or "national institute of open schooling" in compact:
+        return "NIOS"
+    if any(k in compact for k in ["dhse", "hse kerala", "kerala state board", "board of higher secondary", "kerala hse", "state board kerala", "kerala board"]):
+        return "Kerala State Board (DHSE)"
+    if "state board" in compact:
+        return "State Board (Other)"
+
+    return s.title() if s.islower() or s.isupper() else s
+
+def normalize_job_role(val, work_status):
+    if val is None or pd.isna(val):
+        return "Fresher / Student" if work_status == "Fresher" else None
+    s = collapse_spaces(val)
+    low = s.lower()
+    if not low or low in INVALID_TOKENS:
+        return "Fresher / Student" if work_status == "Fresher" else None
+
+    if any(k in low for k in ["software engineer", "software developer", "sde", "swe", "full stack", "web developer", "frontend", "backend", "programmer", "app developer", "developer"]):
+        return "Software Engineer / Developer"
+    if any(k in low for k in ["data analyst", "business analyst", "marketing analyst", "financial analyst", "research analyst", "data scientist", "analyst"]):
+        return "Business / Data Analyst"
+    if any(k in low for k in ["accountant", "accounts executive", "finance executive", "audit", "bookkeeper", "tax", "billing"]):
+        return "Accountant / Finance Executive"
+    if any(k in low for k in ["team lead", "manager", "supervisor", "head of", "director", "vp ", "vice president", "lead"]):
+        return "Manager / Team Lead"
+    if any(k in low for k in ["sales", "business development", "bde", "bda", "marketing", "seo", "digital marketing"]):
+        return "Sales & Marketing"
+    if any(k in low for k in ["hr", "human resource", "recruiter", "talent acquisition"]):
+        return "HR & Recruitment"
+    if any(k in low for k in ["teacher", "lecturer", "professor", "faculty", "trainer", "tutor", "educator", "instructor"]):
+        return "Teacher / Educator"
+    if any(k in low for k in ["system engineer", "network engineer", "it support", "sysadmin", "devops", "cloud", "qa", "quality analyst", "test engineer", "tester", "cyber"]):
+        return "IT / Systems / QA Engineer"
+    if any(k in low for k in ["customer support", "customer service", "process associate", "bpo", "voice", "call center", "technical support"]):
+        return "Customer / Process Support"
+    if any(k in low for k in ["engineer", "technician", "architect", "designer"]):
+        return "Core Engineer / Technical"
+    if any(k in low for k in ["consultant", "advisor", "counselor", "counsellor"]):
+        return "Consultant / Advisor"
+    if any(k in low for k in ["founder", "co-founder", "ceo", "proprietor", "entrepreneur", "business owner", "self employed", "freelancer"]):
+        return "Founder / Self-Employed"
+    if any(k in low for k in ["associate", "executive", "coordinator", "administrator", "admin", "clerk", "officer", "intern", "trainee"]):
+        return "Associate / Executive / Admin"
+
+    return s.title() if s.islower() or s.isupper() else s
+
+def normalize_age_group(val):
+    if val is None or pd.isna(val):
+        return None
+    s = collapse_spaces(val)
+    low = s.lower()
+    if not low or low in INVALID_TOKENS:
+        return None
+    # Unify spacing/suffixes like "18-21", "18 - 21", "18-21 years" -> "18 - 21 Yrs"
+    m = re.match(r"^(\d{2})\s*[-–to]+\s*(\d{2})", low)
+    if m:
+        return f"{m.group(1)} - {m.group(2)} Yrs"
+    if re.search(r"(36\+|>\s*35|above\s*35|35\+)", low):
+        return "36+ Yrs"
+    if re.search(r"(<\s*18|below\s*18|under\s*18)", low):
+        return "Below 18 Yrs"
+    return s
+
+def normalize_gender(val):
+    if val is None or pd.isna(val):
+        return None
+    low = collapse_spaces(val).lower()
+    if low in ["m", "male", "man", "boy"]:
+        return "Male"
+    if low in ["f", "female", "woman", "girl"]:
+        return "Female"
+    if low in ["other", "others", "transgender", "non-binary", "non binary", "prefer not to say"]:
+        return "Other"
+    return collapse_spaces(val).title()
+
+def normalize_state(val):
+    if val is None or pd.isna(val):
+        return None
+    s = collapse_spaces(val)
+    low = re.sub(r"[^a-z\s&]", "", s.lower()).strip()
+    if not low or low in INVALID_TOKENS:
+        return None
+
+    state_map = {
+        "kerala": "Kerala", "kerla": "Kerala", "kl": "Kerala",
+        "tamil nadu": "Tamil Nadu", "tamilnadu": "Tamil Nadu", "tn": "Tamil Nadu",
+        "karnataka": "Karnataka", "karnatka": "Karnataka", "ka": "Karnataka",
+        "maharashtra": "Maharashtra", "maharastra": "Maharashtra", "mh": "Maharashtra",
+        "andhra pradesh": "Andhra Pradesh", "andra pradesh": "Andhra Pradesh", "ap": "Andhra Pradesh",
+        "telangana": "Telangana", "telengana": "Telangana", "ts": "Telangana", "tg": "Telangana",
+        "delhi": "Delhi", "new delhi": "Delhi", "nct of delhi": "Delhi", "delhi ncr": "Delhi",
+        "uttar pradesh": "Uttar Pradesh", "up": "Uttar Pradesh",
+        "west bengal": "West Bengal", "wb": "West Bengal",
+        "madhya pradesh": "Madhya Pradesh", "mp": "Madhya Pradesh",
+        "gujarat": "Gujarat", "gujrat": "Gujarat", "gj": "Gujarat",
+        "rajasthan": "Rajasthan", "rj": "Rajasthan",
+        "odisha": "Odisha", "orissa": "Odisha", "od": "Odisha",
+        "jammu and kashmir": "Jammu & Kashmir", "jammu & kashmir": "Jammu & Kashmir", "jk": "Jammu & Kashmir",
+        "puducherry": "Puducherry", "pondicherry": "Puducherry",
+        "chhattisgarh": "Chhattisgarh", "chattisgarh": "Chhattisgarh",
+        "uttarakhand": "Uttarakhand", "uttaranchal": "Uttarakhand",
+        "himachal pradesh": "Himachal Pradesh", "hp": "Himachal Pradesh",
+        "punjab": "Punjab", "haryana": "Haryana", "bihar": "Bihar", "jharkhand": "Jharkhand",
+        "assam": "Assam", "goa": "Goa", "chandigarh": "Chandigarh"
+    }
+    return state_map.get(low, s.title())
+
+def normalize_country(val):
+    if val is None or pd.isna(val):
+        return None
+    s = collapse_spaces(val)
+    low = re.sub(r"[^a-z\s]", "", s.lower()).strip()
+    if not low or low in INVALID_TOKENS:
+        return None
+
+    country_map = {
+        "india": "India", "ind": "India", "in": "India", "bharat": "India",
+        "uae": "United Arab Emirates (UAE)", "united arab emirates": "United Arab Emirates (UAE)",
+        "dubai": "United Arab Emirates (UAE)", "abu dhabi": "United Arab Emirates (UAE)", "sharjah": "United Arab Emirates (UAE)",
+        "usa": "United States (USA)", "us": "United States (USA)", "united states": "United States (USA)",
+        "united states of america": "United States (USA)", "america": "United States (USA)",
+        "uk": "United Kingdom (UK)", "united kingdom": "United Kingdom (UK)", "england": "United Kingdom (UK)", "great britain": "United Kingdom (UK)",
+        "ksa": "Saudi Arabia", "saudi": "Saudi Arabia", "saudi arabia": "Saudi Arabia", "kingdom of saudi arabia": "Saudi Arabia",
+        "qatar": "Qatar", "doha": "Qatar",
+        "oman": "Oman", "muscat": "Oman",
+        "kuwait": "Kuwait", "bahrain": "Bahrain",
+        "canada": "Canada", "australia": "Australia", "singapore": "Singapore",
+        "germany": "Germany", "ireland": "Ireland", "new zealand": "New Zealand", "malaysia": "Malaysia"
+    }
+    return country_map.get(low, s.title())
 
 # ---------------- BUILD ALL 7 CATEGORY METRICS FROM RAW DATA ----------------
 def build_dashboard_dataset(raw_df, custom_overrides=None):
     df = raw_df.reset_index(drop=True).copy()
     custom_overrides = custom_overrides or {}
 
-    def get_raw_series(metric_name, preserve_exact_text=False):
+    def get_raw_series(metric_name):
         override_col = custom_overrides.get(metric_name)
         if override_col and override_col in df.columns and override_col != "Auto (Recommended)":
-            return clean_val_series(df[override_col], index=df.index, preserve_exact_text=preserve_exact_text)
-        return coalesce_columns(df, RAW_DATA_SCHEMA.get(metric_name, []), preserve_exact_text=preserve_exact_text)
+            return clean_val_series(df[override_col], index=df.index)
+        return coalesce_columns(df, RAW_DATA_SCHEMA.get(metric_name, []))
 
     # Filter out Certificate Programs based on Course / Program Type
-    prog_raw = get_raw_series("Programme", preserve_exact_text=True)
-    prog_type_raw = get_raw_series("Program Type", preserve_exact_text=True)
+    prog_raw = get_raw_series("Programme")
+    prog_type_raw = get_raw_series("Program Type")
 
     keep_mask = [
         not (is_certificate_program(prog_raw.iloc[i]) or is_certificate_program(prog_type_raw.iloc[i]))
@@ -233,66 +628,72 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
     df = df.loc[keep_mask].reset_index(drop=True)
     n_rows = len(df)
 
-    def get_filtered_series(metric_name, preserve_exact_text=False):
+    def get_filtered_series(metric_name):
         override_col = custom_overrides.get(metric_name)
         if override_col and override_col in df.columns and override_col != "Auto (Recommended)":
-            return clean_val_series(df[override_col], index=df.index, preserve_exact_text=preserve_exact_text)
-        return coalesce_columns(df, RAW_DATA_SCHEMA.get(metric_name, []), preserve_exact_text=preserve_exact_text)
+            return clean_val_series(df[override_col], index=df.index)
+        return coalesce_columns(df, RAW_DATA_SCHEMA.get(metric_name, []))
 
     # UG & PG Segregation from Program Type column
-    pt_series = get_filtered_series("Program Type", preserve_exact_text=True)
+    pt_series = get_filtered_series("Program Type")
     df["_Program_Type"] = pd.Series(
         [normalize_program_type(v) for v in pt_series.tolist()],
         index=df.index,
         dtype=object
     )
 
-    # ADMISSION PROFILE (exact values from Course, Specialization, Year, Season)
-    prog_s = get_filtered_series("Programme", preserve_exact_text=True)
-    df["_Programme"] = pd.Series([v if v is not None else "Unspecified Course" for v in prog_s.tolist()], index=df.index, dtype=object)
+    # 1. ADMISSION PROFILE (Course & Specialisation unified; Year & Season kept exact as in columns)
+    prog_s = get_filtered_series("Programme")
+    df["_Programme"] = pd.Series([normalize_course_name(v) for v in prog_s.tolist()], index=df.index, dtype=object)
 
-    spec_s = get_filtered_series("Specialisation", preserve_exact_text=True)
-    df["_Specialisation"] = pd.Series([v if v is not None else "Not Specified" for v in spec_s.tolist()], index=df.index, dtype=object)
+    spec_s = get_filtered_series("Specialisation")
+    df["_Specialisation"] = pd.Series([normalize_specialisation(v) for v in spec_s.tolist()], index=df.index, dtype=object)
 
-    batch_s = get_filtered_series("Batch", preserve_exact_text=True)
+    batch_s = get_filtered_series("Batch")
     df["_Batch"] = pd.Series([v if v is not None else None for v in batch_s.tolist()], index=df.index, dtype=object)
 
-    cycle_s = get_filtered_series("Admission Cycle", preserve_exact_text=True)
+    cycle_s = get_filtered_series("Admission Cycle")
     df["_Admission_Cycle"] = pd.Series([v if v is not None else None for v in cycle_s.tolist()], index=df.index, dtype=object)
 
-    # ACADEMIC BACKGROUND
-    df["_UG_Degree"] = get_filtered_series("UG Degree")
-    df["_Discipline"] = get_filtered_series("Discipline")
-    df["_University"] = get_filtered_series("University")
+    # 2. ACADEMIC BACKGROUND (All normalized so BE/B.Tech, branches, universities merge cleanly)
+    ug_raw = get_filtered_series("UG Degree")
+    df["_UG_Degree"] = pd.Series([normalize_degree(v) for v in ug_raw.tolist()], index=df.index, dtype=object)
+
+    disc_raw = get_filtered_series("Discipline")
+    df["_Discipline"] = pd.Series([normalize_discipline(v) for v in disc_raw.tolist()], index=df.index, dtype=object)
+
+    univ_raw = get_filtered_series("University")
+    df["_University"] = pd.Series([normalize_university(v) for v in univ_raw.tolist()], index=df.index, dtype=object)
 
     stream_base = get_filtered_series("Stream")
     ug_deg_list = df["_UG_Degree"].tolist()
+    disc_list = df["_Discipline"].tolist()
     stream_raw_list = [
-        stream_base.iloc[i] if stream_base.iloc[i] is not None else ug_deg_list[i]
+        stream_base.iloc[i] if stream_base.iloc[i] is not None else (disc_list[i] if disc_list[i] is not None else ug_deg_list[i])
         for i in range(n_rows)
     ]
 
-    def classify_stream(val):
-        if val is None or pd.isna(val):
+    def classify_stream(val, deg_val):
+        combined = f"{val or ''} {deg_val or ''}".strip().lower()
+        if not combined:
             return None
-        v = str(val).strip().lower()
-        if not v or v in INVALID_TOKENS:
-            return None
-        if any(k in v for k in ["b.tech", "b.e", "engineering", "mech", "civil", "eee", "ece", "electrical", "electronics"]):
+        if any(k in combined for k in ["b.e. / b.tech", "m.e. / m.tech", "b.tech", "b.e", "engineering", "mech", "civil", "eee", "ece", "electrical", "electronics", "diploma"]):
             return "Engineering & Technology"
-        if any(k in v for k in ["bca", "mca", "computer", "it", "information technology", "software", "cs", "data science", "ai"]):
+        if any(k in combined for k in ["bca", "mca", "computer", "information technology", "software", "data science", "cyber", "ai &"]):
             return "Computer Applications & IT"
-        if any(k in v for k in ["b.com", "m.com", "commerce", "account", "finance", "ca", "cma", "tax", "banking"]):
+        if any(k in combined for k in ["b.com", "m.com", "commerce", "account", "finance", "ca / cma", "tax", "banking"]):
             return "Commerce & Finance"
-        if any(k in v for k in ["bba", "mba", "management", "business", "hr", "marketing", "operations"]):
+        if any(k in combined for k in ["bba", "bbm", "mba", "pgdm", "management", "business", "hr", "marketing", "operations"]):
             return "Management & Business"
-        if any(k in v for k in ["b.sc", "m.sc", "science", "physics", "chemistry", "math", "biology", "biotech", "pcm", "pcb"]):
-            return "Science"
-        if any(k in v for k in ["b.a", "m.a", "arts", "humanities", "english", "economics", "history", "psychology", "sociology", "journalism"]):
-            return "Arts & Humanities"
-        return str(val).strip()
+        if any(k in combined for k in ["b.sc", "m.sc", "science", "physics", "chemistry", "math", "biology", "biotech", "pcm", "pcb", "medical"]):
+            return "Science & Healthcare"
+        if any(k in combined for k in ["b.a.", "m.a.", "arts", "humanities", "english", "economics", "history", "psychology", "sociology", "journalism", "llb", "b.ed"]):
+            return "Arts, Law & Humanities"
+        if "12th" in combined or "higher secondary" in combined:
+            return "Higher Secondary (+2)"
+        return str(val).strip().title() if val is not None else None
 
-    df["_Stream"] = pd.Series([classify_stream(v) for v in stream_raw_list], index=df.index, dtype=object)
+    df["_Stream"] = pd.Series([classify_stream(stream_raw_list[i], ug_deg_list[i]) for i in range(n_rows)], index=df.index, dtype=object)
 
     pct_series = pd.to_numeric(get_filtered_series("Percentage / CGPA"), errors="coerce")
     for m_col, max_col in [
@@ -326,7 +727,7 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
 
     df["_Percentage_CGPA"] = pd.Series([bracket_score(v) for v in pct_series.tolist()], index=df.index, dtype=object)
 
-    # PROFESSIONAL BACKGROUND
+    # 3. PROFESSIONAL BACKGROUND
     total_exp = pd.Series(0.0, index=df.index)
     for i in range(1, 5):
         y_col = f"Work Experience {i} - Experience Years"
@@ -386,11 +787,11 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
 
     df["_Work_Exp_Years"] = pd.Series(exp_bracket_list, index=df.index, dtype=object)
 
-    job_role_final = [
-        role_list[i] if role_list[i] is not None else ("Fresher / Student" if work_status_list[i] == "Fresher" else None)
-        for i in range(n_rows)
-    ]
-    df["_Job_Role"] = pd.Series(job_role_final, index=df.index, dtype=object)
+    df["_Job_Role"] = pd.Series(
+        [normalize_job_role(role_list[i], work_status_list[i]) for i in range(n_rows)],
+        index=df.index,
+        dtype=object
+    )
 
     industry_final = []
     for i in range(n_rows):
@@ -399,26 +800,27 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
         combined = f"{org} {role}".strip()
         if not combined:
             industry_final.append("Fresher / Not Applicable" if work_status_list[i] == "Fresher" else None)
-        elif any(k in combined for k in ["tcs", "infosys", "wipro", "cognizant", "accenture", "ust", "tech", "software", "infotech", "systems", "ibm", "oracle", "capgemini", "hcl", "developer", "programmer", "it "]):
+        elif any(k in combined for k in ["tcs", "tata consultancy", "infosys", "wipro", "cognizant", "accenture", "ust", "tech", "software", "infotech", "systems", "ibm", "oracle", "capgemini", "hcl", "developer", "programmer", "it ", "zoho", "quest", "ibs"]):
             industry_final.append("IT & Software Services")
-        elif any(k in combined for k in ["bank", "finance", "hdfc", "icici", "sbi", "axis", "federal", "muthoot", "bajaj", "insurance", "audit", "account", "tax", "ey", "deloitte", "kpmg", "pwc", "chartered"]):
+        elif any(k in combined for k in ["bank", "finance", "hdfc", "icici", "sbi", "axis", "federal", "muthoot", "bajaj", "insurance", "audit", "account", "tax", "ey", "ernst", "deloitte", "kpmg", "pwc", "chartered"]):
             industry_final.append("BFSI, Finance & Accounting")
         elif any(k in combined for k in ["school", "college", "university", "academy", "institute", "education", "edtech", "byju", "teacher", "professor", "lecturer", "faculty", "trainer"]):
             industry_final.append("Education & EdTech")
-        elif any(k in combined for k in ["hospital", "health", "pharma", "medical", "clinic", "care", "lab", "nurse", "doctor", "apollo", "aster"]):
+        elif any(k in combined for k in ["hospital", "health", "pharma", "medical", "clinic", "care", "lab", "nurse", "doctor", "apollo", "aster", "kims", "amrita hospital"]):
             industry_final.append("Healthcare & Pharmaceuticals")
-        elif any(k in combined for k in ["retail", "amazon", "flipkart", "sales", "marketing", "store", "mart", "fmcg", "brand", "digital marketing", "e-commerce"]):
+        elif any(k in combined for k in ["retail", "amazon", "flipkart", "sales", "marketing", "store", "mart", "fmcg", "brand", "digital marketing", "e-commerce", "lulu", "reliance"]):
             industry_final.append("Retail, E-Commerce & Marketing")
-        elif any(k in combined for k in ["manufactur", "motors", "auto", "construction", "infra", "engineering", "plant", "production", "mechanical", "electrical", "oil", "gas"]):
+        elif any(k in combined for k in ["manufactur", "motors", "auto", "construction", "infra", "engineering", "plant", "production", "mechanical", "electrical", "oil", "gas", "l&t", "larsen"]):
             industry_final.append("Manufacturing, Core & Engineering")
         elif any(k in combined for k in ["bpo", "kpo", "customer", "support", "tele", "call", "operations", "hr", "human resource", "admin", "consultant", "consulting"]):
             industry_final.append("Corporate Services, BPO & Operations")
         else:
-            industry_final.append(str(org_list[i]) if org_list[i] is not None else "Other Industry")
+            clean_org = re.sub(r"(?i)\b(pvt\.?|private|ltd\.?|limited|inc\.?|llp|llc)\b", "", str(org_list[i])).strip(" .,") if org_list[i] is not None else ""
+            industry_final.append(clean_org.title() if clean_org else "Other Industry")
 
     df["_Industry"] = pd.Series(industry_final, index=df.index, dtype=object)
 
-    # DEMOGRAPHIC PROFILE
+    # 4. DEMOGRAPHIC PROFILE
     raw_age_grp = clean_val_series(df["Age group"], index=df.index).tolist() if "Age group" in df.columns else [None] * n_rows
     raw_age_num = pd.to_numeric(clean_val_series(df["Age"], index=df.index), errors="coerce") if "Age" in df.columns else pd.Series(np.nan, index=df.index)
 
@@ -430,7 +832,7 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
     age_group_final = []
     for i in range(n_rows):
         if raw_age_grp[i] is not None:
-            age_group_final.append(str(raw_age_grp[i]))
+            age_group_final.append(normalize_age_group(raw_age_grp[i]))
         else:
             a = age_num_list[i]
             if pd.isna(a) or a <= 10 or a > 90:
@@ -447,16 +849,13 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
                 age_group_final.append("36+ Yrs")
 
     df["_Age_Group"] = pd.Series(age_group_final, index=df.index, dtype=object)
-    df["_Gender"] = get_filtered_series("Gender")
+    df["_Gender"] = pd.Series([normalize_gender(v) for v in get_filtered_series("Gender").tolist()], index=df.index, dtype=object)
+    df["_State"] = pd.Series([normalize_state(v) for v in get_filtered_series("State").tolist()], index=df.index, dtype=object)
+    df["_Country"] = pd.Series([normalize_country(v) for v in get_filtered_series("Country").tolist()], index=df.index, dtype=object)
 
-    state_s = get_filtered_series("State").tolist()
-    df["_State"] = pd.Series([str(v).title() if v is not None else None for v in state_s], index=df.index, dtype=object)
-
-    country_s = get_filtered_series("Country").tolist()
-    df["_Country"] = pd.Series([str(v).title() if v is not None else None for v in country_s], index=df.index, dtype=object)
-
-    # ENTRY QUALIFICATION
-    df["_Relevant_Degree"] = get_filtered_series("Relevant Degree")
+    # 5. ENTRY QUALIFICATION (Relevant Degree unified with same degree normalizer)
+    rel_deg_raw = get_filtered_series("Relevant Degree")
+    df["_Relevant_Degree"] = pd.Series([normalize_degree(v) for v in rel_deg_raw.tolist()], index=df.index, dtype=object)
 
     lat_list = get_filtered_series("Lateral Entry").tolist()
     df["_Lateral_Entry"] = pd.Series(
@@ -470,7 +869,8 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
     elig_final = []
     for i in range(n_rows):
         if elig_list[i] is not None:
-            elig_final.append(str(elig_list[i]))
+            e_val = collapse_spaces(elig_list[i])
+            elig_final.append(e_val.title() if e_val.islower() or e_val.isupper() else e_val)
         elif pd.notna(pct_list[i]):
             p = pct_list[i]
             elig_final.append("Eligible (>= 50%)" if (p >= 50 or (p <= 10 and p >= 5.0)) else "Conditional (< 50%)")
@@ -479,7 +879,7 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
 
     df["_Academic_Eligibility"] = pd.Series(elig_final, index=df.index, dtype=object)
 
-    # CAREER PROFILE
+    # 6. CAREER PROFILE
     stream_list = df["_Stream"].tolist()
     course_list = df["_Programme"].tolist()
     career_final = []
@@ -501,7 +901,7 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
 
     df["_Career_Profile"] = pd.Series(career_final, index=df.index, dtype=object)
 
-    # GEOGRAPHICAL PROFILE
+    # 7. GEOGRAPHICAL PROFILE
     nri_list = clean_val_series(df["Are you a NRI"], index=df.index).tolist() if "Are you a NRI" in df.columns else [None] * n_rows
     outside_list = clean_val_series(df["Are you residing outside INDIA"], index=df.index).tolist() if "Are you residing outside INDIA" in df.columns else [None] * n_rows
     st_clean_list = df["_State"].tolist()
@@ -516,9 +916,9 @@ def build_dashboard_dataset(raw_df, custom_overrides=None):
 
         if "kerala" in st_val:
             geo_final.append("Students from Kerala")
-        elif is_outside or is_nri or (ct_val != "" and ct_val not in ["india", "in", "ind", "bharat"]):
+        elif is_outside or is_nri or (ct_val != "" and ct_val != "india"):
             geo_final.append("International Locations")
-        elif st_val != "" or ct_val in ["india", "in", "ind", "bharat"]:
+        elif st_val != "" or ct_val == "india":
             geo_final.append("Other Indian States")
         else:
             geo_final.append("Location Unspecified")
@@ -533,7 +933,7 @@ def plot_metric_chart(df, col_name, title, style="bar", palette=px.colors.qualit
         st.info(f"No column available for **{title}**.")
         return
 
-    s = clean_val_series(df[col_name], index=df.index, preserve_exact_text=True).dropna()
+    s = clean_val_series(df[col_name], index=df.index).dropna()
     if s.empty:
         st.info(f"No populated records in current filter for **{title}**.")
         return
@@ -624,7 +1024,7 @@ except Exception as e:
 state_prefix = f"{uploaded_file.name}_{active_sheet_name}"
 custom_overrides = {}
 with st.expander("⚙️ Optional: Override Specific Column Mappings (Pre-configured for 'raw data' schema)", expanded=False):
-    st.caption("By default, UG/PG pulls from Program Type, Admission Profile pulls from Course, Specialization, Year, and Season, and Certificate programs are excluded.")
+    st.caption("Equivalent degrees (e.g., BE & B.Tech), disciplines, universities, job roles, states, and countries are automatically grouped across all charts.")
     override_options = ["Auto (Recommended)"] + list(raw_df.columns)
     o_cols = st.columns(4)
     for idx, metric_key in enumerate(RAW_DATA_SCHEMA.keys()):
@@ -770,10 +1170,10 @@ k3.metric("Program Type Filter", st.session_state.selected_prog_type_btn)
 k4.metric("Students in View", f"{len(filtered_df):,}")
 
 # ==============================================================================
-# ALL 7 SECTIONS (ADMISSION PROFILE MOVED TO SECTION 1; UG/PG IN EVERY SECTION)
+# ALL 7 SECTIONS (ADMISSION PROFILE FIRST; UG/PG SEGREGATION IN EVERY SECTION)
 # ==============================================================================
 
-# SECTION 1: ADMISSION PROFILE (Moved from 4th to 1st)
+# SECTION 1: ADMISSION PROFILE
 st.markdown('<div class="category-banner">1. Admission Profile (UG/PG Segregation, Programme, Specialisation, Batch, Admission Cycle)</div>', unsafe_allow_html=True)
 s1_top1, s1_top2 = st.columns(2)
 with s1_top1:
